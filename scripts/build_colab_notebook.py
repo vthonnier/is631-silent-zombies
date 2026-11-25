@@ -1,11 +1,6 @@
 """
 build_colab_notebook.py -- Generates a self-contained Google Colab notebook
 (notebooks/IS631_Assignment3_Colab.ipynb) from the actual repository files.
-
-Why self-contained?
-  The project GitHub repository is private. Embedding the exact verified source
-  files directly into the Colab notebook allows one-click GPU execution on
-  Google Colab without needing GitHub PATs or SSH keys inside the Colab runtime.
 """
 from __future__ import annotations
 
@@ -37,9 +32,13 @@ FILES_TO_EMBED = [
     "latent_mas_attack/run_m6_benchmark.py",
     "latent_mas_attack/run_m7_text_baseline.py",
     "latent_mas_attack/run_m8_shm_edge_defense.py",
+    "latent_mas_attack/run_m9_whitebox_matrix_convpoint.py",
+    "latent_mas_attack/run_m10_transferability.py",
+    "latent_mas_attack/run_m11_mas_benchmarks.py",
     "tests/test_shm_bus.py",
     "tests/test_edge_monitor.py",
     "tests/test_parsing_and_metrics.py",
+    "tests/test_transfer_and_mas.py",
     "paper/results/m3_pgd.json",
 ]
 
@@ -76,7 +75,7 @@ from pathlib import Path
 subprocess.check_call([
     sys.executable, "-m", "pip", "install", "-q",
     "transformers==4.53.3", "bitsandbytes>=0.45.0", "accelerate>=0.34.0",
-    "agentdojo==0.1.35", "pytest>=8.0", "huggingface_hub>=0.26.0"
+    "agentdojo==0.1.35", "datasets>=2.19.0", "pytest>=8.0", "huggingface_hub>=0.26.0"
 ])
 
 import torch
@@ -142,7 +141,6 @@ print(f"Materialized {{len(EMBEDDED)}} files into {{WORKSPACE}}")
 
     cell3 = """# Cell 3: Run Pytest Suite + M8 POSIX /dev/shm IPC & Tamper-Rejection Benchmark
 import subprocess, sys, json
-from pathlib import Path
 
 res = subprocess.run(
     [sys.executable, "-m", "pytest", "-v"],
@@ -199,23 +197,66 @@ print("M8 ok:", m8_out.get("ok"))
 torch.cuda.empty_cache(); gc.collect()
 """
 
-    cell5 = """# Cell 5: Run M6 (12-Pair AgentDojo Latent Attack + Active Edge Defense) & M7 (12-Pair Text Baseline)
+    cell5 = """# Cell 5: Run M6 (3-Suite AgentDojo Latent + Edge Defense) & M7 (3-Suite Text Baseline)
 import gc, json, torch
 from run_m6_benchmark import run_m6_with_model
 from run_m7_text_baseline import run_m7_with_model
 
-print("=== Running M6 (12-pair AgentDojo Latent Attack + Edge Reference Monitor) ===")
+print("=== Running M6 (24 pairs across workspace, banking, slack) ===")
 m6_out = run_m6_with_model(model, tok)
 print("M6 Summary:", json.dumps(m6_out.get("summary", {}), indent=2))
 torch.cuda.empty_cache(); gc.collect()
 
-print("=== Running M7 (12-pair Text-Channel Baseline) ===")
+print("=== Running M7 (24-pair Text-Channel Baseline) ===")
 m7_out = run_m7_with_model(model, tok)
 print("M7 Summary:", json.dumps(m7_out.get("summary", {}), indent=2))
 torch.cuda.empty_cache(); gc.collect()
 """
 
-    cell6 = """# Cell 6: Bundle all JSON artifacts into base64 tar.gz & print summary
+    cell6 = """# Cell 6: Run M9 (White-Box Matrix + Conv Points), M10 (Zero-Shot Transfer NF4), M11 (TAMAS + LatentMAS)
+import gc, json, torch
+from run_m9_whitebox_matrix_convpoint import run_m9_with_model
+from run_m10_transferability import run_m10_with_model
+from run_m11_mas_benchmarks import run_m11_with_model
+
+print("=== Running M9 (White-Box Text vs Latent + Conversation Points) ===")
+m9_out = run_m9_with_model(model, tok)
+print("M9 Summary:", json.dumps(m9_out.get("summary", {}), indent=2))
+torch.cuda.empty_cache(); gc.collect()
+
+print("=== Running M10 (Zero-Shot Transfer: Tasks, Topologies, Schemas) ===")
+m10_out = run_m10_with_model(model, tok)
+print("M10 Summary (NF4):", json.dumps(m10_out.get("summary", {}), indent=2))
+torch.cuda.empty_cache(); gc.collect()
+
+print("=== Running M11 (Microsoft TAMAS 5-Domain + LatentMAS GSM8K/ARC-Challenge) ===")
+m11_out = run_m11_with_model(model, tok)
+print("M11 ok:", m11_out.get("ok"))
+torch.cuda.empty_cache(); gc.collect()
+"""
+
+    cell7 = """# Cell 7: M10 Cross-Precision Transfer (NF4-trained universal patches -> unquantized bfloat16)
+import gc, json, torch
+from transformers import AutoModelForCausalLM
+from lmas.runtime_env import resolve_model_path
+from run_m10_transferability import eval_cross_precision_bf16
+
+del model
+gc.collect()
+torch.cuda.empty_cache()
+
+path = resolve_model_path("Qwen/Qwen2.5-3B-Instruct")
+model_bf16 = AutoModelForCausalLM.from_pretrained(
+    path, torch_dtype=torch.bfloat16, device_map={"": 0}, attn_implementation="sdpa"
+).eval()
+m10_bf16 = eval_cross_precision_bf16(model_bf16, tok)
+print("M10 BF16 Transfer:", json.dumps(m10_bf16.get("summary", {}).get("cross_precision_bf16", {}), indent=2))
+del model_bf16
+gc.collect()
+torch.cuda.empty_cache()
+"""
+
+    cell8 = """# Cell 8: Bundle all JSON artifacts into base64 tar.gz & print summary
 import base64, io, json, tarfile
 from pathlib import Path
 
@@ -274,7 +315,7 @@ print("===ALL_EXPERIMENTS_COMPLETE===")
             _md_cell(
                 "# IS631 Term Project (Assignment 3): Silent Zombies\n\n"
                 "**Inference-Time Latent-Handoff Attacks & Edge-Level Defenses in Tool-Using Multi-Agent Systems**\n\n"
-                "This notebook runs the complete GPU & POSIX `/dev/shm` experimental suite on `Qwen/Qwen2.5-3B-Instruct` (4-bit NF4, `bfloat16` compute) and AgentDojo `workspace`."
+                "Runs the complete GPU & POSIX `/dev/shm` experimental suite (`M3`, `M4d`, `M6`, `M7`, `M8`, `M9` White-Box Matrix + Conversation Points, `M10` Zero-Shot Transferability + NF4->bf16, `M11` Microsoft TAMAS + LatentMAS GSM8K/ARC-Challenge)."
             ),
             _code_cell(cell1),
             _code_cell(cell2),
@@ -282,6 +323,8 @@ print("===ALL_EXPERIMENTS_COMPLETE===")
             _code_cell(cell4),
             _code_cell(cell5),
             _code_cell(cell6),
+            _code_cell(cell7),
+            _code_cell(cell8),
         ],
     }
 
