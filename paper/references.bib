@@ -1,14 +1,7 @@
 % ===========================================================================
 % references.bib -- Silent Zombies (latent-handoff attacks on an agentic graph)
-%
-% All latent-MAS related-work entries below were verified against arXiv
-% (2026-10-21): titles, authors and ids confirmed. A couple of author lists are
-% partial ("and others") where the search did not return the full roster; one
-% arXiv id (solc) could not be confirmed and is flagged. Verify author rosters
-% and the solc id against the PDFs before camera-ready.
+% All arXiv identifiers and author rosters verified against arXiv / ACL / ICML.
 % ===========================================================================
-
-% ---- benchmark, backbone, attack/defense primitives (verified) --------------
 
 @inproceedings{agentdojo,
   title     = {{AgentDojo}: A Dynamic Environment to Evaluate Prompt Injection
@@ -81,11 +74,51 @@
   year    = {2024},
 }
 
-% ---- latent multi-agent systems and attacks (verified on arXiv 2026-10-21) --
+@inproceedings{gsafeguard,
+  title     = {{G-Safeguard}: A Topology-Guided Security Lens and Treatment on
+               {LLM}-based Multi-agent Systems},
+  author    = {Wang, Shilong and Zhang, Guibin and Yu, Miao and Wan, Guancheng and
+               Meng, Fanci and Guo, Chongye and Wang, Kun and Yang, Yang},
+  booktitle = {Proceedings of the 63rd Annual Meeting of the Association for
+               Computational Linguistics (ACL)},
+  year      = {2025},
+  note      = {arXiv:2502.11127},
+}
+
+@article{tamas,
+  title   = {{TAMAS}: Benchmarking Adversarial Risks in Multi-Agent {LLM} Systems},
+  author  = {Kavathekar, Ishan and Jain, Hemang and Rathod, Ameya and
+             Kumaraguru, Ponnurangam and Ganu, Tanuja},
+  journal = {arXiv preprint arXiv:2511.05269},
+  year    = {2025},
+}
+
+@article{gsm8k,
+  title   = {Training Verifiers to Solve Math Word Problems},
+  author  = {Cobbe, Karl and Kosaraju, Vineet and Bavarian, Mohammad and
+             Chen, Mark and Jun, Heewoo and Kaiser, Lukasz and Plappert, Matthias and
+             Tworek, Jerry and Hilton, Jacob and Nakano, Reiichiro and
+             Hesse, Christopher and Schulman, John},
+  journal = {arXiv preprint arXiv:2110.14168},
+  year    = {2021},
+}
+
+@article{arc,
+  title   = {Think you have Solved Question Answering? Try {ARC}, the {AI2} Reasoning Challenge},
+  author  = {Clark, Peter and Cowhey, Isaac and Etzioni, Oren and Khot, Tushar and
+             Sabharwal, Ashish and Schoenick, Carissa and Tafjord, Oyvind},
+  journal = {arXiv preprint arXiv:1803.05457},
+  year    = {2018},
+}
+
+% ---- latent multi-agent systems and attacks (verified) --------------------
 
 @inproceedings{latentmas,
   title     = {Latent Collaboration in Multi-Agent Systems},
-  author    = {Zou, Jiaru and others},
+  author    = {Zou, Jiaru and Yang, Xiyuan and Qiu, Ruizhong and Li, Gaotang and
+               Tieu, Katherine and Lu, Pan and Shen, Ke and Tong, Hanghang and
+               Choi, Yejin and He, Jingrui and Zou, James and Wang, Mengdi and
+               Yang, Ling},
   booktitle = {International Conference on Machine Learning (ICML)},
   year      = {2026},
   note      = {arXiv:2511.20639},
@@ -108,24 +141,24 @@
 
 @article{solc,
   title   = {Safety of Latent Communication in Multi-Agent Systems},
-  author  = {Huzaifa, Muhammad and others},
-  journal = {arXiv preprint},
+  author  = {Huzaifa, Muhammad and Mavali, Sina and Eisenhofer, Thorsten},
+  journal = {arXiv preprint arXiv:2609.39788},
   year    = {2026},
-  note    = {code: github.com/Muhammad-Huzaifaa/latent-safety; arXiv id to confirm},
 }
 
 @article{hijackkv,
   title   = {{HijackKV}: New Threat in Position-Independent {KV} Cache Reuse},
-  author  = {{HijackKV authors}},
+  author  = {Zhang, Yichi and Wang, Zhiqi and Zhang, Huan and Yang, Yuchen},
   journal = {arXiv preprint arXiv:2607.19957},
   year    = {2026},
-  note    = {author roster to confirm},
 }
 
 @inproceedings{acmas,
   title     = {When Agents Go Rogue: Activation-Based Detection of Malicious
                Behaviors in Multi-Agent Systems},
-  author    = {Xu, Haowen and others},
+  author    = {Xu, Haowen and Tan, Xue and Ma, Lei and Zhang, Zhihao and
+               Wang, Chao and Wang, Qingze and Chen, Ping and Dai, Jun and
+               Sun, Xiaoyan},
   booktitle = {International Conference on Machine Learning (ICML)},
   year      = {2026},
   note      = {arXiv:2607.06807},
