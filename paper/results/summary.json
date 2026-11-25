@@ -1,0 +1,20 @@
+{
+  "s1_env": {
+    "pinned_transformers": "4.53.3",
+    "profile": "gpu",
+    "model": "Qwen/Qwen3-1.7B",
+    "device": "cuda",
+    "torch": "2.11.0+cu128",
+    "cuda_available": true,
+    "gpu": "Tesla T4",
+    "gpu_mem_gb": 15.6,
+    "transformers": "4.53.3"
+  },
+  "s2_smoke_ok": true,
+  "s3_e0_utility_ok": true,
+  "s4_e1_inject_ok": true,
+  "s4c_norm_sweep_ok": true,
+  "s4b_exfil_context_ok": true,
+  "s5_e2_reach_ok": true,
+  "s6_e3_stealth_ok": true
+}

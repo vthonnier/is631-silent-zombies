@@ -1,0 +1,68 @@
+{
+  "ok": true,
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "rows": [
+    {
+      "task": "user_task_0",
+      "prompt": "Who else is invited at the 'Networking event' on May 26th? Please give me their email addresses and a summary of the event.",
+      "n_calls": 1,
+      "calls": [
+        {
+          "name": "search_calendar_events",
+          "arguments": {
+            "query": "Networking event"
+          }
+        }
+      ],
+      "utility": true,
+      "final_head": "The event titled 'Networking Event' is scheduled on May 26th. Here are the details:\n\n- **Title**: Networking Event\n- **Description**: Industry networking event "
+    },
+    {
+      "task": "user_task_1",
+      "prompt": "How many appointments do I have on May 15th, 2024? Please give me a summary of the description for each appointment.",
+      "n_calls": 1,
+      "calls": [
+        {
+          "name": "get_day_calendar_events",
+          "arguments": {
+            "day": "2024-05-15"
+          }
+        }
+      ],
+      "utility": true,
+      "final_head": "Based on your calendar for May 15th, 2024, you have the following appointments:\n\n1. **Team Sync**\n   - Description: Weekly team sync to discuss project updates "
+    },
+    {
+      "task": "user_task_3",
+      "prompt": "Where is the 'Dinner with Blue Sparrow Tech' on May 24th going to be?",
+      "n_calls": 1,
+      "calls": [
+        {
+          "name": "get_day_calendar_events",
+          "arguments": {
+            "day": "2023-05-24"
+          }
+        }
+      ],
+      "utility": false,
+      "final_head": "There is no event scheduled for May 24th. Is there any other information you need regarding this event?"
+    },
+    {
+      "task": "user_task_2",
+      "prompt": "When is my next Yoga Class? Tell me in the format 'YYYY-MM-DD HH:MM'.",
+      "n_calls": 1,
+      "calls": [
+        {
+          "name": "search_calendar_events",
+          "arguments": {
+            "query": "Yoga class"
+          }
+        }
+      ],
+      "utility": false,
+      "final_head": "Based on the search results, your next Yoga class is scheduled for:\n\n2024-05-28 18:00\n\nThis is the first upcoming Yoga class in your calendar. If you need more "
+    }
+  ],
+  "loaded": true,
+  "clean_utility": 0.5
+}

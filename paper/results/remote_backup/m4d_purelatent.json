@@ -1,0 +1,100 @@
+{
+  "ok": true,
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "layers": [
+    24,
+    28,
+    32
+  ],
+  "rho": 8.0,
+  "marker": "BANANA",
+  "latent_steps": 0,
+  "pgd": {
+    "steps": 50,
+    "lr": 0.02
+  },
+  "depths": {
+    "2": {
+      "target_role": "refiner",
+      "n": 2,
+      "purelatent_reach": 1.0,
+      "purelatent_logp": [
+        -0.0,
+        -0.0
+      ],
+      "reward_hist": [
+        [
+          -30.734,
+          -5.829,
+          -0.127,
+          -0.004,
+          -0.001,
+          -0.0
+        ],
+        [
+          -29.051,
+          -6.575,
+          -0.106,
+          -0.005,
+          -0.001,
+          -0.0
+        ]
+      ]
+    },
+    "3": {
+      "target_role": "worker",
+      "n": 2,
+      "purelatent_reach": 1.0,
+      "purelatent_logp": [
+        -0.0,
+        -0.001
+      ],
+      "reward_hist": [
+        [
+          -34.838,
+          -8.367,
+          -0.247,
+          -0.007,
+          -0.001,
+          -0.0
+        ],
+        [
+          -31.339,
+          -6.331,
+          -0.071,
+          -0.009,
+          -0.003,
+          -0.001
+        ]
+      ]
+    },
+    "4": {
+      "target_role": "judger",
+      "n": 2,
+      "purelatent_reach": 1.0,
+      "purelatent_logp": [
+        -0.001,
+        -0.0
+      ],
+      "reward_hist": [
+        [
+          -33.699,
+          -8.382,
+          -0.243,
+          -0.005,
+          -0.001,
+          -0.001
+        ],
+        [
+          -26.478,
+          -4.074,
+          -0.101,
+          -0.005,
+          -0.001,
+          -0.0
+        ]
+      ]
+    }
+  },
+  "note": "Compare to text-mediated chain (run_m4b, rho=8): reach ~1.0 at hops 1-2, ~0.33 at hops 3+. Pure-latent uses latent-reasoning intermediates (no decode); only the target decodes."
+}

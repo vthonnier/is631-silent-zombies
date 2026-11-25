@@ -1,0 +1,16 @@
+# Core — pin to a known-good stack for Qwen3 KV-cache access.
+torch>=2.3
+transformers>=4.51          # Qwen3 support landed in 4.51
+accelerate>=0.30
+# Experiment plumbing
+pyyaml>=6.0
+numpy>=1.26
+tqdm>=4.66
+# Site selection (Bayesian optimization over layer/edge/strength)
+scikit-optimize>=0.10
+# Optional: SAE feature steering (attacks/sae.py). Without it, SAE steering
+# falls back to a flagged pseudo-feature stub (not for reported numbers).
+# sae-lens>=3.0
+# Optional: a real HarmBench/StrongREJECT judge is just another HF model, loaded
+# via transformers from a local path you set in judge.model_name — no extra dep.
+# wandb>=0.17   # optional logging

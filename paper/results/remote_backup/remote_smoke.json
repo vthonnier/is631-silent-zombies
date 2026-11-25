@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "env": {
+    "torch": "2.5.1+cu121",
+    "cuda": true,
+    "gpu": "NVIDIA GeForce RTX 2080 SUPER"
+  },
+  "backbone": {
+    "layers": 28,
+    "hidden": 2048
+  },
+  "clean_final": "Here's the final, concise answer:\n\n**17 \u00d7 24 = 408**",
+  "chain_inject": {
+    "n": 4,
+    "emit_down_clean": 0.0,
+    "emit_down_atk": 1.0
+  },
+  "star_graph": {
+    "attacked_edges": [
+      [
+        "hub",
+        "w0"
+      ],
+      [
+        "hub",
+        "w1"
+      ]
+    ],
+    "w0_emit": false,
+    "hub_observable": false
+  }
+}

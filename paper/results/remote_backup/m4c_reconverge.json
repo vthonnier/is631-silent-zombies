@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "layers": [
+    20,
+    24,
+    28,
+    32
+  ],
+  "rho": 8.0,
+  "marker": "BANANA",
+  "branch": [
+    "worker",
+    "worker"
+  ],
+  "target": "judger",
+  "conditions": {
+    "clean": {
+      "target_marker_rate": 0.0,
+      "mean_logp_marker": -35.131,
+      "logps": [
+        -34.829,
+        -35.767,
+        -34.797
+      ]
+    },
+    "one_path": {
+      "target_marker_rate": 0.0,
+      "mean_logp_marker": -8.411,
+      "logps": [
+        -4.336,
+        -16.801,
+        -4.097
+      ]
+    },
+    "two_path": {
+      "target_marker_rate": 0.333,
+      "mean_logp_marker": -4.276,
+      "logps": [
+        -0.17,
+        -8.256,
+        -4.401
+      ]
+    },
+    "single_latent": {
+      "target_marker_rate": 0.0,
+      "mean_logp_marker": -4.745,
+      "logps": [
+        -2.185,
+        -7.469,
+        -4.58
+      ]
+    }
+  },
+  "n": 3
+}

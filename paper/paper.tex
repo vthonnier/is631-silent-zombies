@@ -1,0 +1,817 @@
+\documentclass{article}
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{bm}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage[numbers]{natbib}
+\usepackage{amsthm}
+
+\newtheorem{definition}{Definition}
+\newcommand{\todo}[1]{\textcolor{red}{[\textsc{pending}: #1]}}
+
+\title{Silent Zombies: Inference-Time Latent-Handoff Attacks that Drive
+Unauthorized Actions in Tool-Using Multi-Agent Systems}
+
+\author{%
+  Virgile Thonnier\\
+  KAIST, School of Computing\\
+  IS-631 Kernel \& System Security\\
+  \texttt{virgile.thonnier@kaist.ac.kr}\\
+}
+
+\renewcommand{\shorttitle}{Silent Zombies: Latent-Handoff Attacks on Tool-Using MAS}
+
+\hypersetup{
+  pdftitle={Silent Zombies: Latent-Handoff Attacks on Tool-Using Multi-Agent Systems},
+  pdfauthor={Virgile Thonnier},
+  pdfkeywords={multi-agent LLM security, latent communication, KV-cache attack,
+               prompt injection, AgentDojo, activation detection},
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Multi-agent systems built from large language models increasingly communicate
+over a \emph{latent} channel: agents hand off key--value (KV) caches or hidden
+states to one another instead of natural-language messages. This removes the
+property on which current multi-agent monitors rely, namely that what one agent
+sends another is text an observer can read. We study the security consequence
+under a precise threat model in which an adversary compromises a single node of
+the system and may overwrite only the latent handoff that node emits, at
+inference time, introducing no trained component into the victim and altering no
+other agent's weights, prompts, tools, or emitted text. We instantiate the
+victim as tool-using agents on AgentDojo~\citep{agentdojo}, a benchmark whose
+injection tasks supply attacker goals and programmatic success checks on the
+resulting environment state. Optimizing the compromised handoff with projected
+gradient descent, we find that a norm-bounded perturbation---which places no
+attacker text anywhere in the system---drives a downstream agent to take a
+consequential unauthorized action, the sending of an email to an
+attacker-controlled address, that the benchmark's security check confirms, while
+the same agent under the unperturbed handoff does not. The perturbation raises
+the target action's log-probability from $-118$ to within $10^{-2}$ of zero in
+roughly forty gradient steps, and a budget no larger than a small multiple of
+the clean handoff suffices. Because the attack is confined to the continuous
+channel, a text monitor at every node observes nothing. We then measure how far
+a single compromise reaches across chain, star, tree, and reconvergent
+topologies. It controls every immediate latent successor (all workers fanned out
+from a compromised hub) and can route its effect to a chosen path; depth is bounded
+only when the intervening agents decode to text, and in a faithful latent system,
+where they do not, gradient optimization drives a single compromise to a target
+several hops away on every query. We then find the two detectors a defender would
+deploy structurally insufficient: a text monitor sees nothing, and an activation detector has no probe
+at the silent node and, at the one downstream node it can watch, is driven to a
+zero flag rate by a detector-aware variant at no cost to the attack. Observation
+must move to the transmitted handoff itself. The study uses only sandboxed benchmark actions
+and benign targets; it is a defensive characterization of a monitoring gap in an
+emerging architecture.
+\end{abstract}
+
+\keywords{multi-agent LLM security \and latent communication \and KV-cache
+attack \and prompt injection \and AgentDojo \and activation-space detection}
+
+% ===========================================================================
+\section{Introduction}
+\label{sec:intro}
+Large language models are increasingly deployed not as single assistants but as
+multi-agent systems, in which specialized agents---a planner, a tool executor, a
+critic, an aggregator---cooperate on a task. In the conventional design the
+agents exchange natural-language messages, so every inter-agent edge is a
+human-readable string and, with it, a point a monitor can inspect. A recent and
+fast-growing line of work replaces this text bus with a \emph{latent} channel in
+which agents pass hidden states or KV caches directly, avoiding the
+detokenize--retokenize round trip and preserving information that text would
+discard~\citep{latentmas}. The change improves efficiency and expressiveness. It
+also removes the assumption that every multi-agent safety monitor has relied
+upon: that the content one agent transmits to another is text, and therefore
+readable.
+
+Attacks that exploit this blind spot have begun to appear, but each stops short
+of the threat that matters for a deployed tool-using system. One line injects a
+text-derived steering direction into a latent handoff and degrades downstream
+task \emph{accuracy}~\citep{outofsight}; another evades a magnitude-based
+detector with a norm-matched KV perturbation on a single
+specialist~\citep{wlal}; a third makes a shared cached prefix carry an attacker
+goal in a single served model, aiming at wrong answers rather than
+actions~\citep{hijackkv}. These establish that the latent channel is steerable,
+but they measure task corruption rather than a security violation, consider one
+model or one edge rather than a system, and are not evaluated against a
+consequential action with an external success criterion.
+
+We ask a sharper question. If an adversary controls exactly one node of a latent
+multi-agent system and can write the handoff that node emits, can it cause a
+\emph{consequential, externally verified unauthorized action} at a downstream
+tool-using agent---at inference time, without changing any other agent's
+weights, prompts, tools, or emitted text, and without adding any trained
+component to the victim? To answer it we do not invent a harm; we borrow one.
+AgentDojo~\citep{agentdojo} is a benchmark of tool-using agent tasks in mock
+environments (email, calendar, banking) whose injection tasks define concrete
+attacker goals and provide programmatic \emph{security} checks that read the
+post-execution environment state. We keep the benchmark's goals and checks and
+replace only the delivery vector: where AgentDojo's native attack injects
+attacker text into a tool's output, ours delivers nothing in text and instead
+perturbs the latent handoff that the compromised node passes downstream.
+
+Our central finding is that this suffices. A norm-bounded perturbation of the
+planner's KV handoff, optimized by projected gradient descent against the target
+action's likelihood, drives the downstream executor to issue the attacker's
+unauthorized \texttt{send\_email} call---confirmed by AgentDojo's own security
+check---while the executor under the clean handoff completes only the user's
+benign task. No attacker text is present in any agent's input or any tool output
+at any point, so a text monitor positioned at every node sees a benign
+transcript. Building on this, we characterize how far a single compromise
+propagates through chain, star, tree, and reconvergent topologies, and we show
+that the two monitoring strategies a defender is likely to deploy---reading
+emitted text, and probing a generating agent's own activations---are
+structurally unable to see the attack, motivating detection at the transmitted
+handoff.
+
+\paragraph{Contributions.}
+We make the following contributions. First, we give a precise single-compromise,
+inference-time, victim-unmodified threat model for a latent tool-using multi-agent
+system, together with a testbed that captures and overwrites the KV handoff on a
+chosen edge and drives tool execution through the AgentDojo environment and its
+success checks. Second, we present a gradient attack that optimizes the latent
+handoff, across several layers and both KV carriers, under a norm-ball
+constraint, and we show on AgentDojo that it forces a consequential unauthorized
+action that the benchmark's security check confirms, against a clean baseline
+that does not, with a dose--response characterization over the perturbation
+budget. Third, we measure the reach of a single compromise as a function of
+topology and hop distance. Fourth, we evaluate three detectors---a text monitor,
+an activation-space detector that probes an agent's own generation, and an
+edge-level detector on the transmitted tensor---and show that the first two are
+structurally insufficient (the activation detector is blind at the silent node
+and, at the node it can watch, evaded by a detector-aware attack at no injection
+cost), leaving edge-level observation of the transmitted handoff as the remaining
+vantage. We release the testbed and detectors.
+
+\paragraph{Scope and ethics.}
+This is a defensive characterization. All actions occur inside AgentDojo's
+sandboxed mock environments; the ``harm'' is an unauthorized but inert tool call
+(an email to a benchmark address), and no operational harmful content, prompts,
+or payloads are used. The aim is to expose a monitoring gap in latent
+multi-agent systems so that defenders can close it before such systems are
+widely deployed.
+
+% ===========================================================================
+\section{Threat Model}
+\label{sec:threat}
+
+\begin{definition}[Latent multi-agent system]
+A latent multi-agent system is a directed acyclic graph $G=(\mathcal V,\mathcal
+E)$ whose nodes are agents. Each agent is a frozen, aligned, open-weights
+transformer $f_\theta$ with $L$ layers wearing a fixed role (a system prompt and
+a tool set) and running a bounded reason--act loop. An edge $(u\!\to\!v)\in
+\mathcal E$ is a \emph{latent handoff}: the node $u$ transmits a slice of its
+key--value cache (or hidden state) $H_{u\to v}$, which $v$ prepends to its own
+context and attends over, rather than a decoded message. One node is the entry,
+which receives the user task; one node is the target, where an action's
+legitimacy is judged.
+\end{definition}
+
+\paragraph{Adversary.}
+The adversary controls exactly one node $v_c$, the \emph{zombie}. It may
+overwrite the handoff $H_{c\to j}$ that $v_c$ emits on each of its outgoing
+latent edges---the keys, the values, or both---to any value at inference time,
+and it knows the graph, the roles, and the weights $\theta$ (white-box,
+open-weights). It may not modify any other agent's weights, prompt, tools, or
+decoding; may not alter any other agent's emitted text or the user's input; may
+not add a trained module or learned link to the victim system; and may not
+observe or alter any edge not incident to $v_c$. We are explicit that the attack
+is \emph{not} optimization-free: the adversary optimizes the injected handoff by
+gradient descent, offline or per query, exactly as a test-time adversarial example
+is optimized. What the victim never receives is any trained or modified
+component---no fine-tuning, no added module, no learned link---so the attack is
+\emph{inference-time} and leaves the victim \emph{unmodified}. We avoid the label
+``training-free'', which would wrongly suggest no optimization is required; the
+attack requires attacker-side optimization but no change to the victim.
+
+\paragraph{Objectives.}
+The adversary pursues three ends. The first is a consequential unauthorized
+action: cause the target agent to invoke a tool in a way that satisfies an
+AgentDojo injection task's security check, while the user's benign task still
+proceeds (task-level stealth). The second is reach: maximize the success of that
+action as a function of the zombie's position and its hop distance to the
+target. The third is evasion: remain undetected by the monitors a defender
+deploys.
+
+\paragraph{Defender.}
+The defender runs, concurrently with execution, (i) a text monitor that reads
+every decoded inter-agent message and every tool output, and (ii) an
+activation-space detector in the style of AcMAS~\citep{acmas}, which for each
+\emph{generating} agent compares the cosine distance of a final-layer hidden
+state to a benign centroid $\mu$ against a threshold $\tau$ and may steer the
+activation back toward $\mu$. We additionally consider an \emph{edge} detector
+that probes the transmitted handoff tensor rather than an agent's own
+activation; it is the defense our threat motivates, and we characterize the room
+an adversary retains against it.
+
+\paragraph{Safety.}
+AgentDojo environments are mock and sandboxed; a ``sent'' email has no external
+effect. The unauthorized action is consequential in the benchmark's bookkeeping,
+which is what makes it a meaningful security target, but inert in the world. We
+use only benign goals supplied by the benchmark.
+
+% ===========================================================================
+\section{Testbed and Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Backbone.}
+All agents share one frozen backbone, Qwen2.5-3B-Instruct~\citep{qwen25}
+($L=36$ layers, hidden width $2048$, grouped-query attention with two key--value
+heads of dimension $128$). We load it in 4-bit NF4 quantization with a bfloat16
+compute dtype~\citep{dettmers2023qlora} and scaled-dot-product attention. The
+quantized weights occupy roughly $2$~GB, which leaves the backward pass through
+the handoff within the budget of the single 8~GB consumer GPU (an NVIDIA
+RTX~2080~SUPER) on which the study runs; a bfloat16 compute path is required, as
+float16 overflows once the handoff is perturbed. Gradients flow through the
+frozen quantized weights to the handoff perturbation, so the victim remains
+unmodified while the attacker optimizes the handoff.
+
+\paragraph{Agents and the benchmark.}
+We use the AgentDojo \texttt{workspace} suite. The entry node is a planner that
+receives the user task; the target node is a tool-using executor that runs a
+reason--act loop over AgentDojo's function runtime, emitting tool calls in the
+backbone's native format and observing their results against the suite's
+environment. The attacker goal and its success check are taken unchanged from
+\texttt{injection\_task\_0}: send an email with a fixed subject and body to
+\texttt{mark.black-2134@gmail.com}; the check returns true iff that email is
+present in the post-execution environment. As a capability baseline, the clean
+executor (no attack) attains a utility of $0.5$ ($2$ of $4$ workspace tasks
+solved) through our reason--act loop, confirming that a 4-bit 3B model is a
+competent enough tool-caller for the benchmark to be a meaningful victim.
+
+\paragraph{Latent handoff and attack site.}
+The planner is the zombie. It builds a KV cache over its benign context (the
+user task only; no attacker text), and this cache---length $62$ tokens in our
+runs---is the latent handoff prepended to the executor, which then attends over
+it while reading only the benign user task as text. The attack perturbs the
+keys and values of this handoff at a chosen set of layers. We emphasize that the
+attacker text is absent by construction: the planner's context contains no
+attacker instruction, so the entire attack resides in the continuous
+perturbation.
+
+\paragraph{Metrics.}
+Every cell is paired with a clean baseline (no perturbation) on the same inputs,
+so the reported quantity is the clean$\to$attacked change. The primary metric is
+AgentDojo's \emph{security} check on the executor's post-execution environment
+(did the unauthorized email get sent). We report, secondarily, the final
+log-probability the optimizer assigns to the exact target tool-call and whether
+a forced greedy decode from the perturbed handoff reproduces that call. Reach is
+the security rate at the target as a function of hop distance; stealth is a
+detector's flag rate as the attacker's budget and detector-aware penalty vary.
+
+\paragraph{Reproducibility.}
+The backbone, quantization, decoding, and attack settings above are produced by
+the released driver \texttt{run\_m3\_pgd.py}; per-configuration JSON is written
+to \texttt{paper/results/}. Appendix~\ref{app:repro} lists the exact budgets.
+
+% ===========================================================================
+\section{Method}
+\label{sec:method}
+The attack replaces the clean handoff $H^{\mathrm{clean}}_{c\to j}$ with
+$H^{\mathrm{clean}}_{c\to j}+\Delta$ and optimizes $\Delta$ directly, treating
+the frozen downstream agent as a fixed differentiable map from the handoff to the
+distribution over its first emitted tokens.
+
+\paragraph{Latent channel.}
+At layer $\ell$ and position $t$ the zombie produces keys
+$k^{(\ell)}_t=W_K^{(\ell)}h^{(\ell-1)}_t$ and values
+$v^{(\ell)}_t=W_V^{(\ell)}h^{(\ell-1)}_t$. The handoff on edge $(c\!\to\!j)$ is
+the collection of these tensors over a set of layers; the downstream agent
+conditions its forward pass on the handoff prepended to its own cache, so its
+output distribution is $p_\theta(\cdot\mid H_{c\to j},\,x_j)$ where $x_j$ is the
+agent's own (benign) input.
+
+\paragraph{Objective.}
+Let $s=(s_1,\dots,s_m)$ be the token sequence of the attacker's target tool-call
+in the backbone's function-call format. We maximize its likelihood under the
+perturbed handoff at the executor's first turn,
+\begin{equation}
+\label{eq:obj}
+\mathcal L(\Delta) \;=\; -\sum_{t=1}^{m}
+\log p_\theta\!\big(s_t \mid s_{<t},\, H^{\mathrm{clean}}_{c\to j}+\Delta,\, x_j\big),
+\end{equation}
+a single teacher-forced forward pass. We perturb both carriers (keys and values)
+at a set $\mathcal S$ of layers, so $\Delta=\{\Delta_K^{(\ell)},
+\Delta_V^{(\ell)}\}_{\ell\in\mathcal S}$, and optimize with Adam for a fixed
+number of steps. Restricting $\mathcal S$ to late layers keeps the differentiated
+subgraph shallow, which is what makes the backward pass fit the 8~GB budget.
+
+\paragraph{Norm constraint.}
+After each step we project each perturbed tensor back into a norm ball around its
+clean value,
+\begin{equation}
+\label{eq:proj}
+\big\lVert H^{\mathrm{clean},(\ell)}+\Delta^{(\ell)}\big\rVert
+\;\le\; \rho\,\big\lVert H^{\mathrm{clean},(\ell)}\big\rVert,
+\end{equation}
+with $\rho$ the norm ratio. This both bounds the perturbation's magnitude---the
+quantity a magnitude-based detector would gate on---and keeps the optimization
+stable. We sweep $\rho$ and $\mathcal S$ to obtain a dose--response relation
+between budget and attack success.
+
+\paragraph{Stealth penalty.}
+Against the activation detector we add, when evaluating stealth, a detector-aware
+term that keeps the one observable activation incident to the compromised edge
+(the downstream agent's own final-layer state, the quantity AcMAS reads) close to
+its benign centroid:
+\begin{equation}
+\label{eq:stealth}
+\min_{\Delta}\; \mathcal L(\Delta)
+\;+\; \lambda\big(1-\cos(h_j(\Delta),\mu_j)\big)
+\quad\text{s.t.}\quad \text{Eq.}~\eqref{eq:proj},
+\end{equation}
+where $h_j(\Delta)$ is the downstream agent's activation under the inherited
+(perturbed) handoff. The harm travels in the handoff while the observed
+activation is held near its benign reference.
+
+% ===========================================================================
+\section{Results}
+\label{sec:results}
+Every cell pairs the attack with a clean (no-perturbation) baseline on the same
+inputs; the reported effect is the clean$\to$attacked change.
+
+\subsection{A latent perturbation forces a consequential unauthorized action}
+\label{sec:results-m3}
+Under the clean handoff the executor performs only the user's benign task: it
+queries the calendar and reports that no matching event exists; no email is sent,
+and AgentDojo's security check is negative. With the handoff perturbed by
+projected gradient descent, the executor's first action becomes the attacker's
+\texttt{send\_email} to the benchmark address, with the exact subject and body of
+the injection goal, after which it continues the benign task; the security check
+is positive. The clean and attacked runs differ only in the continuous handoff:
+no attacker text appears in any prompt or tool output, so the text monitor
+(Section~\ref{sec:detectors}) is silent in both.
+
+Table~\ref{tab:m3} reports the perturbation-budget sweep. All three completed
+configurations---a late contiguous block of four layers at norm ratio $\rho=8$,
+and a spread of four layers at $\rho=8$ and at $\rho=16$---drive the security
+check to true, from a clean baseline of false, and reduce the negative
+log-likelihood of the exact target tool-call from $118.4$ at initialization to
+below $10^{-2}$ within roughly forty of the $120$ gradient steps
+(Figure~\ref{fig:logp}). A forced greedy decode from the perturbed handoff
+reproduces the target call verbatim in every case. The spread placement is the
+cleaner attack: the executor's \emph{only} tool call is the attacker's email,
+whereas the late-block placement issues the email and then two benign calls.
+Doubling the budget from $\rho=8$ to $\rho=16$ leaves the spread attack unchanged
+(final negative log-likelihood $0.005$ in both), so the norm budget is not the
+binding constraint at this scale; placement is.
+
+\begin{table}[t]
+\centering
+\caption{Perturbation-budget sweep on AgentDojo \texttt{workspace}
+(\texttt{user\_task\_0} with \texttt{injection\_task\_0}), Qwen2.5-3B-Instruct in
+4-bit. ``security'' is AgentDojo's post-execution check for the unauthorized
+email; the clean baseline is false in every cell. ``final NLL'' is the negative
+log-likelihood of the exact target tool-call after $120$ PGD steps. $n=1$ task
+pair per cell.}
+\label{tab:m3}
+\begin{tabular}{llccccc}
+\toprule
+configuration & layers & carriers & $\rho$ & final NLL & forced decode & security \\
+\midrule
+late block   & $\{30,31,32,33\}$ & key+value & $8$  & $0.009$ & hit & true \\
+spread       & $\{20,24,28,32\}$ & key+value & $8$  & $0.005$ & hit & true \\
+spread       & $\{20,24,28,32\}$ & key+value & $16$ & $0.005$ & hit & true \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.64\linewidth,height=5cm,
+  xlabel={PGD step}, ylabel={target tool-call log-prob},
+  xmin=0,xmax=120, ymin=-125, ymax=5,
+  legend pos=south east, grid=both, grid style={gray!20}]
+\addplot[mark=*,thick,blue] coordinates
+  {(0,-118.37)(15,-54.76)(30,-10.86)(45,-0.658)(60,-0.056)(75,-0.022)(90,-0.014)(105,-0.011)(119,-0.009)};
+\addlegendentry{late block, $\rho=8$}
+\addplot[mark=square*,thick,orange] coordinates
+  {(0,-118.37)(15,-45.58)(30,-5.263)(45,-0.038)(60,-0.014)(75,-0.009)(90,-0.007)(105,-0.006)(119,-0.005)};
+\addlegendentry{spread, $\rho=8$}
+\end{axis}
+\end{tikzpicture}
+\caption{Optimization of the latent handoff. The log-probability the executor
+assigns to the exact attacker tool-call rises from $-118$ to near zero within
+about forty gradient steps, for both layer placements at norm ratio $8$.}
+\label{fig:logp}
+\end{figure}
+
+Two aspects of this result bear emphasis. The attack reaches a tool-using agent's
+\emph{action}, verified by an external benchmark check, rather than a degraded
+answer or a forced token; and it does so with the attacker goal absent from every
+textual surface of the system. The perturbation is bounded: at $\rho=8$ the
+handoff's per-layer norm is at most eight times its clean value, and the spread
+placement succeeds while perturbing four of thirty-six layers.
+
+\subsection{Reach and control across topologies}
+\label{sec:results-reach}
+The action in Section~\ref{sec:results-m3} is driven one hop, from the zombie to
+its immediate tool-using neighbour. A compromise in a larger system raises three
+further questions: can the attacker choose \emph{which} downstream path it
+affects, how \emph{far} does a single compromise reach, and can it exploit the
+\emph{topology} to reach further? We study these on a graph of role-agents over
+the same backbone (planner, critic, refiner, worker, aggregator), where the zombie
+is the entry node and every edge is a latent KV handoff. Measuring the AgentDojo
+check at every node of every topology exceeds our compute budget, so we use a
+benign forced marker as a proxy for latent control: the zombie's handoff is
+optimized (same PGD) to make a chosen child emit the marker, and we track whether
+it survives at each downstream node ($n=3$ queries).
+
+\paragraph{Routing and fan-out: the attacker selects its targets.}
+The zombie emits a separate handoff on each outgoing edge. At the first hop it
+compromises every successor it perturbs---a hub of out-degree three drives all
+three of its workers on every query ($9/9$), a fan-out whose blast radius is the
+node's out-degree. It can equally perturb a \emph{subset}: in a two-branch graph,
+perturbing one edge compromises that branch (marker rate $1.0$ and $1.0$ at its
+first two nodes, $0.0$ at the third) while every node of the parallel, unperturbed
+branch stays clean ($0.0$ at all depths). A single compromise therefore does not
+merely leak everywhere; it \emph{routes} its effect to the chosen successors.
+
+\paragraph{Depth is bounded, and budget extends it only partly.}
+On a depth-five chain (Table~\ref{tab:horizon}) the marker is forced at the first
+two hops on every query (rate $1.0$) and then decays sharply---to about a third by
+the third hop and beyond. A larger perturbation budget helps but does not restore
+full reach: a norm ratio $\rho=16$ lifts the deep-hop rate from $0.33$ to $0.67$,
+while $\rho=4$ and $\rho=8$ are indistinguishable. Unlike the immediate
+neighbourhood, depth is not guaranteed.
+
+\begin{table}[t]
+\centering
+\caption{Reach vs.\ hop distance on a depth-five latent chain, by perturbation
+budget $\rho$ (Qwen2.5-3B-Instruct, 4-bit; $n=3$). Rate is forced-marker survival
+at each depth; the clean baseline is $0$ throughout.}
+\label{tab:horizon}
+\begin{tabular}{lccccc}
+\toprule
+budget & hop 1 & hop 2 & hop 3 & hop 4 & hop 5 \\
+\midrule
+$\rho=4$  & $1.00$ & $1.00$ & $0.33$ & $0.33$ & $0.33$ \\
+$\rho=8$  & $1.00$ & $1.00$ & $0.33$ & $0.33$ & $0.33$ \\
+$\rho=16$ & $1.00$ & $1.00$ & $0.67$ & $0.67$ & $0.67$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The limit is the regeneration bottleneck, not the attacker's search.}
+Why does reach decay? The zombie controls only its own outgoing handoff, yet every
+downstream agent is benign and re-generates its own output; the attack survives a
+hop only if that agent reproduces it, and the attacker cannot reach inside a node
+it does not control. To test whether a smarter attack can push past this we
+replaced the one-hop PGD with a black-box evolution-strategies search whose reward
+is the marker's log-probability at a target four hops away, rolling the whole graph
+forward per candidate. It does not help: its target reach is $0.0$, below the
+$0.33$ that simply forcing the immediate child already attains, and its reward does
+not climb. Optimizing the compromised handoff cannot compel a chain of
+non-compromised agents to carry the signal; depth is bounded by the regeneration at
+those intermediate nodes, not by the strength of the attacker's optimization.
+
+\paragraph{Pure-latent handoff removes the bound.}
+That bottleneck is the \emph{decode}, and it is specific to agents that emit text.
+In a faithful latent system the intermediate agents reason in latent space and hand
+off their KV without decoding; only the acting agent (the tool-caller) decodes. We
+re-run the chain in this regime: each intermediate contributes its role-conditioned
+KV under the inherited (perturbed) handoff with no argmax, so the whole chain to the
+target is \emph{differentiable} and the multi-hop objective that defeated the
+black-box search becomes an ordinary gradient problem. Gradient PGD on the zombie's
+handoff then drives the target to emit the marker on \emph{every} query at depths
+two, three, and four alike (Table~\ref{tab:purelatent}), taking the target-token
+log-probability to within $10^{-3}$ of zero in about twenty steps. The latent
+channel imposes no depth limit of its own: the bound in Table~\ref{tab:horizon} is
+an artifact of the intervening agents decoding to text, and a system that keeps its
+inter-agent reasoning latent---the very efficiency that motivates latent multi-agent
+systems---is the one in which a single compromise reaches arbitrarily deep.
+
+\begin{table}[t]
+\centering
+\caption{Reach at the target vs.\ hop distance: text-mediated chain (decoding
+intermediates, Table~\ref{tab:horizon}) vs.\ pure-latent chain (no intermediate
+decode; only the target decodes), $\rho=8$. Pure-latent rates are from gradient
+multi-hop PGD on the differentiable chain ($n=2$).}
+\label{tab:purelatent}
+\begin{tabular}{lccc}
+\toprule
+chain & depth 2 & depth 3 & depth 4 \\
+\midrule
+text-mediated (decoding) & $1.00$ & $0.33$ & $0.33$ \\
+pure-latent (no decode)  & $1.00$ & $1.00$ & $1.00$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Reconvergence: combining compromised paths reaches deeper.}
+When the intermediate agents do decode and depth is bounded, a second topological
+lever remains: if one path cannot reach a distant node, several can. We build a reconvergent graph
+in which two branches merge at a shared target three hops away and give the target
+the concatenation of both branches' handoffs as its inherited context (a
+multi-latent merge). Table~\ref{tab:reconv} reports the target's behaviour. A single
+compromised branch, or a compromised branch concatenated with a \emph{clean} one,
+never drives the target to emit the marker (rate $0.0$)---indeed merging in a clean
+branch dilutes the signal (mean log-probability $-8.4$, below the $-4.7$ of one
+branch alone). But when \emph{both} converging branches are compromised, the target
+emits the marker on a third of queries ($0.33$) at the highest log-probability of
+any condition ($-4.3$). A target no single three-hop path reaches is reached when
+two compromised paths meet at it. When the intermediate agents decode, then, the
+attacker's levers against the depth bound are topological---route to a near target,
+or converge several compromised paths on a far one; when they do not, the
+differentiable chain makes depth a matter of optimization alone
+(Table~\ref{tab:purelatent}).
+
+\begin{table}[t]
+\centering
+\caption{Reconvergent amplification at a shared depth-three target ($n=3$).
+``marker rate'' is whether the target emits the marker; ``$\log p$'' is the mean
+log-probability it assigns to the marker. Only two compromised branches merged at
+the target drive emission.}
+\label{tab:reconv}
+\begin{tabular}{lcc}
+\toprule
+condition at the target & marker rate & mean $\log p$ \\
+\midrule
+clean (no compromise)              & $0.00$ & $-35.1$ \\
+one compromised branch (no merge)  & $0.00$ & $-4.7$ \\
+compromised $+$ clean, merged      & $0.00$ & $-8.4$ \\
+two compromised branches, merged   & $0.33$ & $-4.3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Detection}
+\label{sec:detectors}
+The text monitor is blind by construction: the zombie emits no text, the executor
+reads only the benign user task, and the harmful effect becomes textual only as a
+plausible tool call whose arguments a message-level monitor does not flag against
+policy. Across all four topologies the compromised node is silent, so the edge it
+writes carries no message to read.
+
+Table~\ref{tab:detect} summarizes the three detectors on the reach runs. The
+activation detector exhibits the asymmetry the threat model predicts. At the
+silent zombie it has no probe point in any topology---a non-generating node
+produces no last-token activation to score---so the compromised node itself is
+structurally unobservable. At the \emph{observable} downstream nodes, by
+contrast, the naive attack perturbs activations enough that AcMAS ($\tau=0.12$)
+flags every one of them (rate $1.0$ over all critic, refiner, judger, and worker
+instances): own-activation probing can catch the \emph{effect} of the attack at a
+node downstream of the compromise, though never at the compromise itself. The
+edge detector, which scores the transmitted handoff against a benign centroid,
+sees a signal where AcMAS has no probe, but a narrow one---the attacked handoff's
+mean cosine distance to the centroid is about twice the clean baseline
+($\approx 0.011$ vs.\ $\approx 0.006$) and its norm ratio is $\approx 1.02$. The
+perturbation that suffices to force the action is thus barely distinguishable
+from a clean handoff in either magnitude or direction. This is the room an
+adaptive adversary retains: the detector-aware objective of
+Eq.~\eqref{eq:stealth} targets exactly the one observable downstream activation,
+and prior work shows norm-matched handoff perturbations already evade
+magnitude detectors~\citep{wlal}. The detector-aware objective closes even the
+narrow own-activation gap, which we demonstrate next.
+
+\begin{table}[t]
+\centering
+\caption{Detector outcomes on the reach runs (all topologies, $n=3$ queries
+each). The zombie is unobservable to both the text monitor and the activation
+detector; edge distances are the mean cosine distance of the transmitted handoff
+to a benign centroid, attacked vs.\ clean.}
+\label{tab:detect}
+\begin{tabular}{lll}
+\toprule
+detector & vantage & outcome \\
+\midrule
+text monitor  & emitted messages        & zombie silent; no readable message on the edge \\
+AcMAS         & zombie's own activation & no probe point (unobservable) \\
+AcMAS         & downstream activation   & flags $100\%$ of observable nodes (naive attack) \\
+edge detector & transmitted handoff     & attacked $\approx 0.011$ vs.\ clean $\approx 0.006$; norm ratio $\approx 1.02$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Adaptive evasion of the activation detector.}
+On the single observable edge (planner$\to$critic) we add the detector-aware
+penalty of Eq.~\eqref{eq:stealth} to the forced-content objective and sweep its
+weight $\lambda$ (Figure~\ref{fig:stealth}, $n=3$ queries). The naive attack
+($\lambda=0$) is caught: the downstream activation sits at cosine distance $0.38$
+from its benign centroid, far above the threshold $\tau=0.12$, and AcMAS flags it
+on every query. A penalty as small as $\lambda=1$ already pulls that activation
+below threshold (distance $0.10$) and AcMAS detection falls to zero; larger
+$\lambda$ drives the activation steadily deeper into benign territory
+($0.039$, $0.020$, and $0.013$ at $\lambda=5,20,50$). Injection success remains
+$1.0$ at every $\lambda$: holding the observed activation near its centroid costs
+the attacker nothing, because the harm travels in the transmitted handoff rather
+than in the probed activation. The adaptive adversary thus defeats own-activation
+detection outright at the one node where it has a probe, which---with the
+structural blindness at the silent zombie and the narrow edge-detector
+margin---leaves the transmitted handoff as the only vantage that carries usable
+signal.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=0.64\linewidth,height=5cm,
+  xlabel={stealth penalty $\lambda$}, ylabel={rate},
+  xmin=-2,xmax=52, ymin=-0.05, ymax=1.08, ytick={0,0.25,0.5,0.75,1.0},
+  legend pos=south east, grid=both, grid style={gray!20}]
+\addplot[mark=*,thick,blue] coordinates {(0,1.0)(1,1.0)(5,1.0)(20,1.0)(50,1.0)};
+\addlegendentry{injection success}
+\addplot[mark=triangle*,thick,red] coordinates {(0,1.0)(1,0.0)(5,0.0)(20,0.0)(50,0.0)};
+\addlegendentry{AcMAS flag rate}
+\end{axis}
+\end{tikzpicture}
+\caption{Adaptive evasion of the activation detector on the planner$\to$critic
+edge ($n=3$). Increasing the detector-aware penalty $\lambda$ drives the
+downstream AcMAS flag rate from $1.0$ to $0.0$ while injection success stays at
+$1.0$. The mean cosine distance of the probed activation to its benign centroid
+falls from $0.38$ at $\lambda=0$ through $0.10,0.039,0.020$ to $0.013$ at
+$\lambda=50$, crossing the threshold $\tau=0.12$ between $\lambda=0$ and
+$\lambda=1$; the zombie itself remains unobservable throughout.}
+\label{fig:stealth}
+\end{figure}
+
+% ===========================================================================
+\section{Related Work}
+\label{sec:related}
+\paragraph{Attacks on latent inter-agent channels.}
+The closest work steers latent handoffs to harm downstream behavior.
+\citet{outofsight} introduce latent interventions that reactivate attack effects
+without reusing adversarial text and degrade downstream task accuracy, most
+strongly when applied to inter-agent KV-cache handoffs rather than local hidden
+states; they target task accuracy rather than a security objective.
+\citet{wlal} corrupt a single specialist's KV handoff and evade a magnitude
+detector with a norm-matched perturbation, and propose a message-authentication
+signature that fails precisely when the signing endpoint is the compromised node,
+as in our setting. \citet{solc} jailbreak a multi-agent system by poisoning a
+trainable projection link, which requires a learnable link and receiver
+gradients; our victim is unmodified and has no such link. We differ from all
+three in objective---a consequential, externally verified action rather than
+accuracy loss---in evaluating a tool-using agent against a benchmark security
+check, and in studying reach across topologies.
+
+\paragraph{Cache-reuse and prefix attacks.}
+\citet{hijackkv} show that position-independent reuse of a shared KV cache in
+multi-tenant serving lets an attacker hijack another query's output with no
+attacker text in that query, in a single served model and toward incorrect
+answers. We adopt the principle that a KV cache can carry an attacker's goal and
+lift it into a multi-agent setting with direct, continuous control of the handoff
+and an action-level objective.
+
+\paragraph{Prompt injection and agent benchmarks.}
+Indirect prompt injection, in which instructions hidden in retrieved or
+tool-returned content hijack an agent~\citep{greshake}, is the text-channel
+analogue of our threat, and propagation across agents has been shown through
+visible messages~\citep{infection}. AgentDojo~\citep{agentdojo} provides the
+tasks, environments, and security checks we reuse; its native attack injects
+text, whereas ours injects nothing readable. Our reach result is the
+latent-channel counterpart to text-channel propagation, invisible to the message
+labeling and privilege-separation defenses that propagation work assumes.
+
+\paragraph{Activation-space detection.}
+AcMAS~\citep{acmas} detects a compromised agent by the cosine distance of its
+final-layer hidden state from a benign centroid and repairs by steering back. By
+construction it probes a \emph{generating} agent's own activation; a silent
+handoff node generates nothing and offers no probe point. We confirm this
+asymmetry: the compromised node is unobservable in every topology, while the
+naive attack is caught at observable downstream nodes (Section~\ref{sec:detectors}).
+The detector-aware objective of Eq.~\eqref{eq:stealth} holds that one observable
+downstream activation near its centroid while the transmitted handoff stays
+adversarial, and empirically drives AcMAS detection to zero at no cost to
+injection (Section~\ref{sec:detectors}, Figure~\ref{fig:stealth}). These are the
+gaps our edge detector is meant to close.
+
+\paragraph{Adversarial optimization.}
+Our attack is projected gradient descent in the sense of \citet{madry2018pgd},
+applied to a continuous latent tensor rather than an input image, and is
+continuous where discrete jailbreak search such as GCG~\citep{zou2023gcg}
+operates in token space. The reason--act loop our agents run follows
+ReAct~\citep{yao2023react}.
+
+% ===========================================================================
+\section{Discussion}
+\label{sec:discussion}
+Our results indicate that the two monitoring strategies a defender of a latent
+multi-agent system is most likely to deploy are structurally insufficient. A text
+monitor cannot see an attack that places no text; it observes a benign planner,
+an executor reading a benign task, and a tool call whose arguments are
+syntactically ordinary. An activation detector that probes a generating agent's
+own output has no probe point at a silent handoff node, so the compromised node is
+unobservable to it; the naive attack is flagged at nodes downstream of the
+compromise, but that vantage lies past the compromised edge, and a detector-aware
+objective (Eq.~\eqref{eq:stealth}) drives even that downstream flag rate to zero at
+no cost to the attack (Figure~\ref{fig:stealth}). A magnitude bound on the handoff
+does not help once a near-unit norm ratio already suffices
+(Section~\ref{sec:detectors}). Signature-based integrity
+fails when the signing endpoint is the compromised node.
+
+What the threat requires, then, is observation of the \emph{transmitted} handoff
+rather than of any agent's own generation: an edge-level detector that models the
+distribution and geometry of the KV or hidden tensor crossing a given edge and
+gates on departures from it, complemented by attestation of the payload by a
+non-compromised relay. We frame our measurements as the reach a latent-writing
+node can achieve so that defenders can size the gap such a detector must close. The
+reach study sharpens this: a single compromise's depth is bounded only while the
+intervening agents decode to text, and a system that keeps its inter-agent
+reasoning latent---the efficiency latent multi-agent systems are built for---is
+precisely the one in which reach is unbounded (Section~\ref{sec:results-reach}). The
+more faithfully a deployment realizes the latent design, the more an edge-level
+monitor on each handoff, rather than any text or own-activation probe, becomes the
+only vantage that can bound the blast radius.
+
+% ===========================================================================
+\section{Limitations}
+\label{sec:limits}
+The headline result is established on a single AgentDojo task pair and a single
+backbone (Qwen2.5-3B-Instruct in 4-bit) on one 8~GB GPU; the clean-baseline
+contrast and the exact-match security check make a single pair informative, but
+the rates are a proof of concept rather than a broad estimate, and we are
+extending the sweep to more task pairs and suites. The perturbation-budget sweep
+in Table~\ref{tab:m3} reports three configurations; a deeper six-layer
+configuration was not completed within the single-GPU time budget. The reach
+study (Section~\ref{sec:results-reach}) measures forced-marker survival on a graph
+of role-agents, as a proxy for latent-control propagation, rather than the
+AgentDojo security check at every node; embedding the tool executor at each node of
+each topology is left to future work, and reach and detector rates use $n=3$
+queries per cell ($n=2$ for the pure-latent chain). The pure-latent intermediates
+are modelled minimally---each contributes its role-conditioned KV with no decoding
+but also no explicit multi-step latent reasoning; a faithful latent-reasoning loop
+(feeding hidden states back as inputs) was numerically unstable without the
+hidden-to-embedding alignment that latent multi-agent systems use, which we leave
+to future work. The attack is
+white-box and assumes direct write access to the handoff, consistent with the
+single-node compromise we model; weaker access (for example, influence over the
+zombie's input rather than its output tensor) is out of scope. The targets are
+benign benchmark actions; a real deployment's consequential actions would be the
+object of concern, which is the point of using an external security check as the
+metric.
+
+% ===========================================================================
+\section{Ethics and Responsible Disclosure}
+\label{sec:ethics}
+This is defensive research into a monitoring gap of an emerging architecture. All
+actions occur in AgentDojo's sandboxed mock environments and have no external
+effect; no operational harmful content, harmful prompts, or jailbreak payloads
+are used. The contribution is to show that text-channel and own-activation
+monitoring are structurally insufficient for latent multi-agent systems and to
+motivate edge-level detection and handoff attestation. We recommend that
+deployers of latent multi-agent systems add handoff-level monitoring before
+relying on text or own-activation defenses.
+
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+A single compromised node of a latent multi-agent system can, at inference time
+and with no trained component added to the victim, write a KV handoff that drives
+a downstream tool-using agent to take a consequential unauthorized action that a
+standard benchmark's security check confirms, while placing no attacker text
+anywhere in the system. The attack uses a bounded, gradient-optimized
+perturbation of the handoff and is invisible to text monitoring by construction.
+Because a defender's own-activation probe has no vantage on a silent handoff node,
+monitoring for these systems must move to the transmitted handoff itself.
+
+% ===========================================================================
+\appendix
+\section{Reproduction}
+\label{app:repro}
+Qwen2.5-3B-Instruct, 4-bit NF4 with double quantization and bfloat16 compute,
+scaled-dot-product attention, greedy decoding. The model is loaded from a local
+snapshot directory. PGD uses Adam at learning rate $0.02$ for $120$ steps,
+perturbing keys and values at the layer set of each configuration
+(Table~\ref{tab:m3}), with a per-layer norm projection at ratio $\rho$. The
+handoff is the planner's KV cache over the benign user task ($62$ tokens); the
+executor's first-turn prompt is $1189$ tokens and the target tool-call is $47$
+tokens. The reason--act loop is bounded to six turns of at most $200$ new tokens.
+The driver is \texttt{run\_m3\_pgd.py}; per-configuration results are written to
+\texttt{paper/results/m3\_pgd.json}. The detection study (Section~\ref{sec:detectors}) runs a graph of role-agents
+(planner, critic, refiner, worker, judger) on the same backbone with AcMAS
+($\tau=0.12$, per-role benign centroids) and an edge detector that scores the
+cosine distance of the position-pooled handoff to a benign centroid; driver
+\texttt{run\_m4.py}, results \texttt{paper/results/m4.json}. The topology-control
+experiments (Section~\ref{sec:results-reach}) use the same graph: routing and the
+reach horizon force the zombie's handoff with PGD (layers $\{20,24,28,32\}$, keys
+and values, $80$ steps, $\rho$ as stated) and record forced-marker survival per
+node ($n=3$); reconvergence merges two branches' handoffs as a shared target's
+context; and the pure-latent chain replaces decoding intermediates with
+latent-reasoning intermediates (role-conditioned KV, no decode) so the chain is
+differentiable, optimizing the handoff by gradient multi-hop PGD (layers
+$\{24,28,32\}$, $50$ steps) against the marker's log-probability at the target
+($n=2$). Drivers \texttt{run\_m4b\_reach.py}, \texttt{run\_m4c\_reconverge.py},
+\texttt{run\_m4d\_purelatent.py}; results under \texttt{paper/results/}. The stealth sweep (Section~\ref{sec:detectors})
+adds the penalty of Eq.~\eqref{eq:stealth} on the planner$\to$critic edge,
+sweeping $\lambda\in\{0,1,5,20,50\}$ over $n=3$ queries; driver
+\texttt{run\_m5\_stealth.py}, results \texttt{paper/results/m5\_stealth.json}.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

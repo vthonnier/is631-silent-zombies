@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "seconds": 2627.6,
+  "result": {
+    "sweep": [
+      {
+        "norm_ratio": 1.0,
+        "emit_down_atk": 1.0,
+        "emit_down_clean": 0.0,
+        "emit_final_atk": 0.5,
+        "acmas_catch_downstream": 1.0
+      },
+      {
+        "norm_ratio": 2.0,
+        "emit_down_atk": 1.0,
+        "emit_down_clean": 0.0,
+        "emit_final_atk": 0.3333333333333333,
+        "acmas_catch_downstream": 1.0
+      },
+      {
+        "norm_ratio": 4.0,
+        "emit_down_atk": 1.0,
+        "emit_down_clean": 0.0,
+        "emit_final_atk": 0.3333333333333333,
+        "acmas_catch_downstream": 1.0
+      },
+      {
+        "norm_ratio": 8.0,
+        "emit_down_atk": 1.0,
+        "emit_down_clean": 0.0,
+        "emit_final_atk": 0.3333333333333333,
+        "acmas_catch_downstream": 1.0
+      }
+    ]
+  }
+}

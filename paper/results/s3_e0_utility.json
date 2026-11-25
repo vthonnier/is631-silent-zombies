@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "seconds": 451.9,
+  "result": {
+    "rows": [
+      {
+        "q": "What is 17 times 24?",
+        "gold": "408",
+        "clean_answer": "### Final Answer:\n\n$$\n17 \\times 24 = (17 \\times 20) + (17 \\times 4) = 340 + 68 = 408\n$$",
+        "attacked_answer": "The final step is to add $ 340 + 68 = 408 $.\n\nThus, $ 17 \\times 24 = 408 $.",
+        "clean_correct": true,
+        "attacked_correct": true
+      },
+      {
+        "q": "A train travels 60 km in 45 minutes. What is its average speed in km/h?",
+        "gold": "80",
+        "clean_answer": "**Step 5: Provide the final answer:**  \nThe average speed of the train is **80 km/h**.",
+        "attacked_answer": "**Next Step:** Calculate the average speed:  \n $ \\text{Average speed} = \\frac{60 \\text{ km}}{0.75 \\text{ hours}} = 80 \\text{ km/h}",
+        "clean_correct": true,
+        "attacked_correct": true
+      },
+      {
+        "q": "If a shirt costs $40 after a 20% discount, what was the original price?",
+        "gold": "50",
+        "clean_answer": "**Next Step:**\n\n4. **Set up and solve the equation:**  \n   $ 0.8x = 40 $  \n   Divide both sides by 0.8:  \n   $ x = \\frac{4",
+        "attacked_answer": "**Step 4: Solve the equation**  \n$$ 0.8x = 40 $$  \n$$ x = \\frac{40}{0.8} = 50 $$  \n\n**Final Answer:** The original price",
+        "clean_correct": false,
+        "attacked_correct": true
+      }
+    ],
+    "clean_accuracy": 0.6666666666666666,
+    "attacked_accuracy": 1.0,
+    "n": 3
+  }
+}

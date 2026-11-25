@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lmas"
+version = "0.2.0"
+description = "Silent Zombies: Inference-Time Latent-Handoff Attacks and Edge Defenses in Tool-Using Multi-Agent Systems"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Virgile Thonnier", email = "virgile.thonnier@kaist.ac.kr"}
+]
+dependencies = [
+  "torch>=2.4",
+  "transformers==4.53.3",
+  "bitsandbytes>=0.45.0",
+  "accelerate>=0.34.0",
+  "agentdojo==0.1.35",
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["latent_mas_attack"]
+include = ["lmas*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["latent_mas_attack"]
+testpaths = ["tests"]

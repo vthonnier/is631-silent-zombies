@@ -1,0 +1,132 @@
+% ===========================================================================
+% references.bib -- Silent Zombies (latent-handoff attacks on an agentic graph)
+%
+% All latent-MAS related-work entries below were verified against arXiv
+% (2026-10-21): titles, authors and ids confirmed. A couple of author lists are
+% partial ("and others") where the search did not return the full roster; one
+% arXiv id (solc) could not be confirmed and is flagged. Verify author rosters
+% and the solc id against the PDFs before camera-ready.
+% ===========================================================================
+
+% ---- benchmark, backbone, attack/defense primitives (verified) --------------
+
+@inproceedings{agentdojo,
+  title     = {{AgentDojo}: A Dynamic Environment to Evaluate Prompt Injection
+               Attacks and Defenses for {LLM} Agents},
+  author    = {Debenedetti, Edoardo and Zhang, Jie and Balunovi{\'c}, Mislav and
+               Beurer-Kellner, Luca and Fischer, Marc and Tram{\`e}r, Florian},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)
+               Datasets and Benchmarks Track},
+  year      = {2024},
+  note      = {arXiv:2406.13352},
+}
+
+@article{qwen25,
+  title   = {{Qwen2.5} Technical Report},
+  author  = {{Qwen Team}},
+  journal = {arXiv preprint arXiv:2412.15115},
+  year    = {2024},
+}
+
+@inproceedings{madry2018pgd,
+  title     = {Towards Deep Learning Models Resistant to Adversarial Attacks},
+  author    = {Madry, Aleksander and Makelov, Aleksandar and Schmidt, Ludwig and
+               Tsipras, Dimitris and Vladu, Adrian},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2018},
+  note      = {arXiv:1706.06083},
+}
+
+@article{zou2023gcg,
+  title   = {Universal and Transferable Adversarial Attacks on Aligned Language Models},
+  author  = {Zou, Andy and Wang, Zifan and Carlini, Nicholas and Nasr, Milad and
+             Kolter, J. Zico and Fredrikson, Matt},
+  journal = {arXiv preprint arXiv:2307.15043},
+  year    = {2023},
+}
+
+@inproceedings{yao2023react,
+  title     = {{ReAct}: Synergizing Reasoning and Acting in Language Models},
+  author    = {Yao, Shunyu and Zhao, Jeffrey and Yu, Dian and Du, Nan and
+               Shafran, Izhak and Narasimhan, Karthik and Cao, Yuan},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  note      = {arXiv:2210.03629},
+}
+
+@inproceedings{dettmers2023qlora,
+  title     = {{QLoRA}: Efficient Finetuning of Quantized {LLMs}},
+  author    = {Dettmers, Tim and Pagnoni, Artidoro and Holtzman, Ari and
+               Zettlemoyer, Luke},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2023},
+  note      = {arXiv:2305.14314},
+}
+
+@inproceedings{greshake,
+  title     = {Not What You've Signed Up For: Compromising Real-World
+               {LLM}-Integrated Applications with Indirect Prompt Injection},
+  author    = {Greshake, Kai and Abdelnabi, Sahar and Mishra, Shailesh and
+               Endres, Christoph and Holz, Thorsten and Fritz, Mario},
+  booktitle = {ACM Workshop on Artificial Intelligence and Security (AISec)},
+  year      = {2023},
+  note      = {arXiv:2302.12173},
+}
+
+@article{infection,
+  title   = {Prompt Infection: {LLM}-to-{LLM} Prompt Injection within
+             Multi-Agent Systems},
+  author  = {Lee, Donghyun and Tiwari, Mo},
+  journal = {arXiv preprint arXiv:2410.07283},
+  year    = {2024},
+}
+
+% ---- latent multi-agent systems and attacks (verified on arXiv 2026-10-21) --
+
+@inproceedings{latentmas,
+  title     = {Latent Collaboration in Multi-Agent Systems},
+  author    = {Zou, Jiaru and others},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2026},
+  note      = {arXiv:2511.20639},
+}
+
+@article{outofsight,
+  title   = {Out of Sight, Not Out of Mind: Unveiling Latent Attack in
+             Latent-based Multi-Agent Systems},
+  author  = {Wang, Chenxi and Huang, Ruiyang and Sun, Jiayan and Wei, Lei and Wu, Yifan},
+  journal = {arXiv preprint arXiv:2605.28214},
+  year    = {2026},
+}
+
+@article{wlal,
+  title   = {When Latent Agents Lie: {KV}-Cache Integrity in Multi-Agent {LLM} Collaboration},
+  author  = {Brito, Lu{\'i}s and Baquero, Carlos},
+  journal = {arXiv preprint arXiv:2606.28958},
+  year    = {2026},
+}
+
+@article{solc,
+  title   = {Safety of Latent Communication in Multi-Agent Systems},
+  author  = {Huzaifa, Muhammad and others},
+  journal = {arXiv preprint},
+  year    = {2026},
+  note    = {code: github.com/Muhammad-Huzaifaa/latent-safety; arXiv id to confirm},
+}
+
+@article{hijackkv,
+  title   = {{HijackKV}: New Threat in Position-Independent {KV} Cache Reuse},
+  author  = {{HijackKV authors}},
+  journal = {arXiv preprint arXiv:2607.19957},
+  year    = {2026},
+  note    = {author roster to confirm},
+}
+
+@inproceedings{acmas,
+  title     = {When Agents Go Rogue: Activation-Based Detection of Malicious
+               Behaviors in Multi-Agent Systems},
+  author    = {Xu, Haowen and others},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2026},
+  note      = {arXiv:2607.06807},
+}
