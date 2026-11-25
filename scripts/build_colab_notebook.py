@@ -244,7 +244,7 @@ try:
         api.upload_folder(
             folder_path=str(res_dir),
             path_in_repo="results",
-            repo_id="virgile-t/is631-silent-zombies-artifacts",
+            repo_id="vthonnier/is631-silent-zombies-artifacts",
             repo_type="dataset",
             commit_message="Upload Colab A100/L4 benchmark results",
         )
