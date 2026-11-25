@@ -52,15 +52,31 @@ def write_thin_notebook() -> Path:
             "accelerator": "GPU",
         },
         "cells": [
-            md("# IS631 Assignment 3: Silent Zombies (Lightweight Runner)\n\n"
-               "Pulls `code_bundle.tar.gz` (or clones via HF/Drive) and runs `scripts/run_colab_suite.py`."),
+            md("# IS631 Assignment 3: Silent Zombies (Drive-Backed Runner)\n\n"
+               "1. In **Runtime -> Change runtime type**, select **A100 GPU** (or **L4 GPU**).\n"
+               "2. Press **Run all (`Ctrl+F9`)** and approve Google Drive mount once.\n"
+               "3. Every experiment auto-saves to `MyDrive/IS631_Silent_Zombies/results/` and auto-resumes if disconnected."),
             code(
-                "!pip install -q 'transformers==4.53.3' 'bitsandbytes>=0.45.0' 'accelerate>=0.34.0' "
-                "'agentdojo==0.1.35' 'datasets>=2.19.0' 'pytest>=8.0' 'huggingface_hub>=0.26.0'\n"
-                "import os; os.makedirs('/content/workspace', exist_ok=True)\n"
-                "# Upload code_bundle.tar.gz into /content/workspace or pull from Drive/HF, then:\n"
-                "!tar -xzf /content/workspace/code_bundle.tar.gz -C /content/workspace\n"
-                "!python /content/workspace/scripts/run_colab_suite.py"
+                "from google.colab import drive\n"
+                "drive.mount('/content/drive')\n\n"
+                "!pip install -q \"transformers==4.53.3\" \"bitsandbytes>=0.45.0\" \"accelerate>=0.34.0\" "
+                "\"agentdojo==0.1.35\" \"datasets>=2.19.0\" \"pytest>=8.0\"\n\n"
+                "import os, shutil, tarfile\n"
+                "DRIVE_DIR = \"/content/drive/MyDrive/IS631_Silent_Zombies\"\n"
+                "BUNDLE = f\"{DRIVE_DIR}/code_bundle.tar.gz\"\n"
+                "assert os.path.exists(BUNDLE), f\"Missing {BUNDLE}\"\n"
+                "if os.path.exists(\"/content/workspace\"):\n"
+                "    shutil.rmtree(\"/content/workspace\")\n"
+                "os.makedirs(\"/content/workspace\", exist_ok=True)\n"
+                "with tarfile.open(BUNDLE, \"r:gz\") as tf:\n"
+                "    tf.extractall(\"/content/workspace\")\n"
+                "print(\"Unpacked workspace from\", BUNDLE)"
+            ),
+            code(
+                "import os\n"
+                "os.environ[\"LMAS_OUT_DIR\"] = \"/content/drive/MyDrive/IS631_Silent_Zombies/results\"\n"
+                "os.makedirs(os.environ[\"LMAS_OUT_DIR\"], exist_ok=True)\n"
+                "!python -u /content/workspace/scripts/run_colab_suite.py"
             ),
         ],
     }
