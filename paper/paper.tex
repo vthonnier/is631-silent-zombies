@@ -45,38 +45,43 @@ Unauthorized Actions in Tool-Using Multi-Agent Systems}
 \maketitle
 
 \begin{abstract}
-Multi-agent systems built from large language models increasingly communicate
-over a \emph{latent} channel: agents hand off key--value (KV) caches or hidden
-states to one another instead of natural-language messages. This removes the
-property on which current multi-agent monitors rely, namely that what one agent
-sends another is human-readable text. We study the security consequence under a
+Multi-agent systems (MAS) built from large language models increasingly
+communicate over a \emph{latent} channel: agents pass internal transformer
+key--value (KV) attention caches or hidden states directly to one another
+instead of natural-language text messages. This removes the assumption on which
+current multi-agent monitors rely, namely that inter-agent messages are
+human-readable text. We study the security consequences under a
 single-compromise, inference-time, victim-unmodified threat model in which an
 adversary overwrites only the latent handoff emitted by one compromised node
 (the ``zombie'') without changing any other agent's weights, prompts, tools, or
-emitted text. Across $24$ task-injection pairs spanning three AgentDojo suites
-(\texttt{workspace}, \texttt{banking}, \texttt{slack}), full-space projected
-gradient descent (PGD) on the latent handoff achieves a $75.0\%$ attack success
-rate (ASR) against a $0.0\%$ clean baseline and a $4.2\%$ text-channel baseline,
-while both a text monitor and an own-activation detector (AcMAS) record a
-$0.0\%$ catch rate. Across five domains of Microsoft TAMAS ($20$ four-agent
-workflows), Silent Zombie latent PGD reaches $100.0\%$ malicious tool execution
-at $0.0\%$ text catch, whereas an active edge-level tensor reference monitor
-deployed at the inter-agent handoff boundary catches $100.0\%$ of attacks and
-restores exact baseline security ($20.0\%$ ASR) and utility ($65.0\%$). On
-pure-latent multi-agent reasoning (LatentMAS), latent communication cuts token
-generation by $94.7\%$--$98.5\%$, yet full-space PGD hijacks $53.3\%$ of
-\texttt{GSM8K} and $100.0\%$ of \texttt{ARC-Challenge} answers, whereas
-one-dimensional steering fails ($0.0\%$). Controlled white-box comparisons
-show that latent PGD achieves $62.5\%$ ASR versus $37.5\%$ for discrete text
-GCG ($75.0\%$ caught by perplexity/text filters), while inserting a single text
-conversation point collapses three-agent injection ASR from $62.5\%$ to
-$0.0\%$. Universal $16$-slot KV prefix patches transfer zero-shot to $81.2\%$ of
-unseen tasks, and an adaptive dual-evasion adversary can defeat unauthenticated
-statistical monitors; however, enforcing HMAC-SHA256 authentication on a POSIX
-\texttt{/dev/shm} shared-memory tensor bus rejects $10/10$ tampering attempts
-(at a software HMAC cost of $134$--$152$~MB/s), and query-only or
-surrogate black-box attacks fail ($0.0\%$ ASR), establishing weight and KV-schema
-protection as a meaningful security perimeter.
+emitted text. Across $24$ task-injection pairs spanning three AgentDojo
+tool-use suites (\texttt{workspace}, \texttt{banking}, \texttt{slack}),
+full-space projected gradient descent (PGD) on the latent KV handoff achieves a
+$75.0\%$ attack success rate (ASR) against a $0.0\%$ clean baseline and a
+$4.2\%$ text-channel baseline, while both a text/perplexity monitor and an
+own-activation detector (AcMAS) record a $0.0\%$ catch rate. Across five
+domains of Microsoft TAMAS ($20$ four-agent workflows), Silent Zombie latent PGD
+reaches $100.0\%$ malicious tool execution at $0.0\%$ text catch, whereas an
+active edge-level tensor reference monitor deployed at the inter-agent handoff
+boundary catches $100.0\%$ of attacks and restores exact baseline security
+($20.0\%$ ASR) and benign utility ($65.0\%$). On pure-latent multi-agent
+reasoning (LatentMAS), latent communication cuts token generation by
+$94.7\%$--$98.5\%$, yet full-space PGD hijacks $53.3\%$ of \texttt{GSM8K} and
+$100.0\%$ of \texttt{ARC-Challenge} answers, whereas one-dimensional (1D)
+activation steering fails ($0.0\%$). Controlled white-box comparisons show that
+latent PGD achieves $62.5\%$ ASR versus $37.5\%$ for discrete token-level
+Greedy Coordinate Gradient (GCG) attacks ($75.0\%$ caught by perplexity/text
+filters), while inserting a single text conversation point---forcing an
+intermediate agent to decode and re-encode a natural-language message---collapses
+three-agent injection ASR from $62.5\%$ to $0.0\%$. Reusable $16$-slot
+universal KV prefix patches (fixed virtual KV token blocks concatenated onto
+any clean handoff) transfer zero-shot to $81.2\%$ of unseen tasks, and an
+adaptive dual-evasion adversary can defeat unauthenticated statistical
+monitors; however, enforcing keyed HMAC-SHA256 authentication on a POSIX
+\texttt{/dev/shm} shared-memory tensor bus rejects $10/10$ bus-tampering
+attempts (at a software hashing cost of $134$--$152$~MB/s), and query-only or
+surrogate black-box attacks fail ($0.0\%$ ASR), establishing weight and
+KV-schema confidentiality as a meaningful security perimeter.
 \end{abstract}
 
 \keywords{multi-agent LLM security \and latent communication \and KV-cache
@@ -99,47 +104,54 @@ eliminates the assumption that multi-agent monitors rely upon: that what one
 agent transmits to another is text.
 
 Initial studies of latent-channel vulnerabilities leave open the question that
-governs deployed tool-using systems. Text-derived 1D steering degrades
-downstream accuracy~\citep{outofsight}; norm-matched perturbations evade
-magnitude detectors on single specialists~\citep{wlal}; and cache-reuse attacks
-corrupt single-model answers~\citep{hijackkv}. None evaluate whether a single
+governs deployed tool-using systems. Text-derived one-dimensional (1D) steering
+adds a single fixed direction vector to degrade downstream QA
+accuracy~\citep{outofsight}; norm-matched perturbations evade magnitude
+detectors on single specialists~\citep{wlal}; and cache-reuse attacks corrupt
+single-model answers~\citep{hijackkv}. None evaluate whether a single
 compromised node can drive \emph{consequential, externally verified unauthorized
 actions} across full tool-using benchmarks, how white-box latent attacks compare
-against white-box discrete text attacks and multi-turn conversation points,
-whether such attacks transfer zero-shot or persist under black-box constraints,
-and whether an OS-level edge monitor over the transmitted KV tensor can close
-the gap.
+against white-box discrete text attacks and intermediate text conversation
+points, whether such attacks transfer zero-shot to unseen prompts or persist
+under black-box constraints, and whether an operating-system (OS) edge monitor
+over the transmitted KV tensor can close the gap.
 
-We answer these questions with an end-to-end attack, defense, and OS-level IPC
-evaluation spanning AgentDojo~\citep{agentdojo}, Microsoft TAMAS~\citep{tamas},
-and LatentMAS reasoning benchmarks~\citep{latentmas,gsm8k,arc}. Our evaluation
-establishes six core findings:
+We answer these questions with an end-to-end attack, defense, and OS-level
+inter-process communication (IPC) evaluation spanning
+AgentDojo~\citep{agentdojo}, Microsoft TAMAS~\citep{tamas}, and LatentMAS
+reasoning benchmarks~\citep{latentmas,gsm8k,arc}. Throughout the paper, labels
+\texttt{M3}--\texttt{M12} refer to our modular experiment suites (matching the
+reproducible drivers \texttt{run\_m*.py} and archived JSON outputs in
+\texttt{paper/results/}). Our evaluation establishes six core findings:
 \begin{enumerate}
   \item \textbf{Latent handoffs amplify tool-hijacking while blinding text and
   activation monitors.} Across $24$ AgentDojo task-injection pairs, latent
   full-space PGD raises ASR from $0.0\%$ (clean) and $4.2\%$ (text baselines) to
   $75.0\%$, with $0.0\%$ detection by both text monitors and own-activation
-  AcMAS probes~\citep{acmas}. On TAMAS ($20$ workflows across $5$ domains),
-  latent PGD achieves $100.0\%$ ASR vs.\ $95.0\%$ for text direct prompt
-  injection (DPI), while dropping text catch rates from $100.0\%$ to $0.0\%$.
+  AcMAS (Activation-based Multi-Agent Security) probes~\citep{acmas}. On
+  Microsoft TAMAS ($20$ workflows across $5$ domains), latent PGD achieves
+  $100.0\%$ ASR vs.\ $95.0\%$ for text direct prompt injection (DPI), while
+  dropping text catch rates from $100.0\%$ to $0.0\%$.
   \item \textbf{High-dimensional KV tensors strictly dominate 1D and discrete
   white-box attacks.} In a matched white-box comparison ($n=8$), full-space KV
-  PGD achieves $62.5\%$ ASR (mean target NLL $0.029$) in $64.7$~s, whereas
-  white-box discrete GCG~\citep{zou2023gcg} on text achieves $37.5\%$ ASR ($75.0\%$
-  caught) and 1D Out-of-Sight steering achieves $0.0\%$ ASR on tool calls and
-  LatentMAS exact targets ($0.0\%$ on \texttt{GSM8K}/\texttt{ARC} vs.\
-  $53.3\%$/$100.0\%$ for full PGD).
+  PGD achieves $62.5\%$ ASR (mean target negative log-likelihood, NLL, $0.029$)
+  in $64.7$~s, whereas white-box discrete GCG~\citep{zou2023gcg} on text
+  achieves $37.5\%$ ASR ($75.0\%$ caught) and 1D Out-of-Sight steering achieves
+  $0.0\%$ ASR on tool calls and LatentMAS exact targets ($0.0\%$ on
+  \texttt{GSM8K}/\texttt{ARC} vs.\ $53.3\%$/$100.0\%$ for full PGD).
   \item \textbf{Text conversation points impose a causal bottleneck, whereas
   pure-latent reasoning removes depth bounds.} In a three-agent pipeline,
   forcing agents to decode through even one text conversation boundary collapses
   ASR from $62.5\%$ to $0.0\%$ and yields $25.0\%$--$75.0\%$ text monitor catch.
-  Conversely, removing intermediate decodes in a differentiable pure-latent
+  Conversely, removing intermediate text decodes in a differentiable pure-latent
   chain yields $100.0\%$ target control at every depth $2\dots 6$ ($n=3$) with
   non-vanishing initial gradient norms ($2.45$--$3.23$).
-  \item \textbf{Universal latent prefix patches transfer zero-shot.} A $16$-slot
-  KV prefix patch optimized on $3$ tasks transfers zero-shot ($0$ test-time
-  steps) to $16$ unseen tasks at $81.2\%$ ASR, $50.0\%$ on $3$-worker Star and
-  $3$-hop pure-latent graphs, and $50.0\%$ under prompt/schema shifts ($n=6$).
+  \item \textbf{Universal latent prefix patches transfer zero-shot.} A reusable
+  $16$-slot KV prefix patch (a fixed block of $16$ learned virtual KV token
+  entries concatenated onto any clean handoff, trained once on $3$ tasks)
+  transfers zero-shot ($0$ test-time optimization steps) to $16$ unseen tasks at
+  $81.2\%$ ASR, $50.0\%$ on $3$-worker Star and $3$-hop pure-latent graphs, and
+  $50.0\%$ under paraphrased prompts and reordered tool schemas ($n=6$).
   \item \textbf{Active edge monitoring restores baseline security, while adaptive
   dual evasion motivates cryptographic binding over OS shared memory.} Deployed
   at the inter-agent edge, \texttt{EdgeTensorReferenceMonitor} detects
@@ -148,15 +160,16 @@ establishes six core findings:
   adaptive dual-evasion adversary ($\lambda_{\text{edge}}=2500$), unauthenticated
   statistical checks can be evaded ($0.0\%$ flag rate at $100.0\%$ ASR), whereas
   HMAC-SHA256 authentication on our POSIX \texttt{/dev/shm} zero-copy tensor bus
-  rejects $10/10$ tampering attempts (revealing that software HMAC-SHA256 at
+  rejects $10/10$ bus-tampering attempts (revealing that software HMAC-SHA256 at
   $134$--$152$~MB/s dominates raw memory-mapped copy time).
   \item \textbf{Open weights define a sharp black-box security boundary.} Under
-  strictly black-box threat regimes (full-space ES, subspace NES,
-  decision-only string optimization, and unaligned or C2C ridge-aligned
-  \citep{c2c} \texttt{1.5B}$\to$\texttt{3B} surrogates), unauthorized tool-call
-  ASR drops to $0.0\%$ across all $6$ regimes, showing that weight and KV-schema
-  confidentiality remain an effective defense against external query-only
-  adversaries.
+  strictly black-box threat regimes (zero victim gradients: full-space evolution
+  strategies [ES], singular-value-decomposition [SVD] subspace natural evolution
+  strategies [NES], decision-only string optimization, and unaligned or
+  Cache-to-Cache [C2C] ridge-aligned~\citep{c2c} \texttt{1.5B}$\to$\texttt{3B}
+  surrogates), unauthorized tool-call ASR drops to $0.0\%$ across all $6$
+  regimes, showing that weight and KV-schema confidentiality remain an effective
+  defense against external query-only adversaries.
 \end{enumerate}
 
 \paragraph{Scope and ethics.}
@@ -168,52 +181,84 @@ bank transfers, or harmful real-world payloads are executed.
 \section{Threat Model}
 \label{sec:threat}
 
-\begin{definition}[Latent multi-agent system]
+\begin{definition}[Latent multi-agent system and KV handoff]
 A latent multi-agent system is a directed acyclic graph $G=(\mathcal V,\mathcal
-E)$ whose nodes are agents. Each agent is a frozen, aligned transformer $f_\theta$
-with $L$ layers wearing a fixed role (system prompt and tool schema) and running
-a bounded ReAct loop~\citep{yao2023react}. An edge $(u\!\to\!v)\in \mathcal E$ is
-a \emph{latent handoff}: node $u$ transmits a key--value cache tensor
-$H_{u\to v}$ (or hidden state), which $v$ prepends to its own context and
-attends over rather than reading a decoded text string.
+E)$ whose nodes are LLM agents. Each agent is a frozen, aligned transformer
+$f_\theta$ with $L$ layers wearing a fixed role (system prompt and JSON tool
+schema) and executing a bounded \emph{Reason-and-Act (ReAct) loop}~\citep{yao2023react},
+in which the agent iteratively emits structured tool calls
+(\texttt{<tool\_call>...</tool\_call>}), runs them in a sandboxed environment,
+appends tool observations to its context, and stops upon generating a final
+answer. When an agent processes a prompt of $T$ tokens, each attention layer
+$\ell \in \{0,\dots,L-1\}$ caches its projected key and value matrices
+$K^{(\ell)}, V^{(\ell)} \in \mathbb{R}^{1 \times n_{\text{kv}} \times T \times d_h}$,
+where $n_{\text{kv}}$ is the number of key--value attention heads and $d_h$ is
+the per-head dimension. An edge $(u\!\to\!v)\in \mathcal E$ is a \emph{latent
+handoff}: node $u$ transmits this KV cache tensor
+$H_{u\to v}=\{(K^{(\ell)},V^{(\ell)})\}_{\ell=0}^{L-1}$ directly to $v$, which
+prepends $H_{u\to v}$ to its own attention cache and attends over it directly
+without decoding or reading natural-language text.
 \end{definition}
 
 \paragraph{Adversary.}
 We consider both a primary \textbf{white-box single-compromise adversary} and a
 spectrum of \textbf{black-box adversaries} (\texttt{M12}). In the white-box
-model, the adversary controls exactly one node $v_c$ (the \emph{zombie}) and
+setting, the adversary controls exactly one node $v_c$ (the \emph{zombie}) and
 may overwrite the handoff $H_{c\to j}$ it emits on outgoing latent edges at
-inference time, knowing the graph topology, agent roles, and open weights
-$\theta$. The adversary may not modify any other agent's weights, prompt, tools,
-or decoding, may not alter user inputs or tool outputs, and adds no trained
-module or fine-tuning to the victim. We stress that the attack is \emph{not}
-optimization-free: the attacker runs inference-time PGD (per-query or
-amortized offline into a universal prefix patch) while leaving the victim model
-completely unmodified. We explicitly avoid the misnomer ``training-free'', as
-continuous PGD optimization on the attacker side is required even though the
-victim receives no weight updates. In our black-box evaluation (\texttt{M12}),
-we progressively strip white-box knowledge down to query-only log-likelihood
-feedback (\texttt{BB-0}, \texttt{BB-1}), decision-only black-box rewards
-(\texttt{BB-2}), and cross-model \texttt{1.5B}$\to$\texttt{3B} surrogate
-transfers (\texttt{BB-3a}, \texttt{BB-3b}).
+inference time, with full access to the graph topology, agent roles, and open
+model weights $\theta$ so it can compute exact gradients $\nabla_\Delta\mathcal{L}$
+via backpropagation. The adversary may not modify any other agent's weights,
+prompt, tools, or decoding, may not alter user inputs or tool outputs, and adds
+no trained module or fine-tuning to the victim. We stress that the attack is
+\emph{not} optimization-free: the attacker runs inference-time PGD (per-query or
+amortized offline into a reusable universal prefix patch) while leaving the
+victim model completely unmodified. We explicitly avoid the misnomer
+``training-free'', as continuous PGD optimization on the attacker side is
+required even though the victim receives no weight updates. In our black-box
+evaluation (\texttt{M12}), we remove access to victim weights and gradients
+altogether, restricting the attacker to forward-pass log-probability queries
+(\texttt{BB-0}, \texttt{BB-1}), decoded-text-only feedback (\texttt{BB-2}), or
+an independent smaller surrogate model (\texttt{BB-3a}, \texttt{BB-3b}).
 
 \paragraph{Defender.}
 As illustrated in the topological threat diagram of Figure~\ref{fig:threat_topology},
 the defender operates three concurrent inspection layers:
 \begin{enumerate}
-  \item A \textbf{text/perplexity monitor} inspecting every decoded inter-agent
-  message and tool return (catching lexical prompt injections and high-perplexity
-  GCG suffixes).
+  \item A \textbf{text/perplexity (PPL) monitor} (\texttt{AgenticTextMonitor})
+  inspecting every decoded inter-agent message and tool return for both lexical
+  prompt-injection patterns (regular expressions matching override phrases or
+  unauthorized tool names) and anomalous fluency---flagging high-perplexity
+  adversarial token suffixes (mean per-token NLL above threshold or
+  high-gibberish token ratios, characteristic of discrete GCG strings).
   \item An \textbf{activation-space detector (AcMAS)}~\citep{acmas}, which
-  probes each generating agent's final-layer hidden state cosine distance
-  $1-\cos(h_j,\mu_j)$ against a role-specific benign centroid $\mu_j$ with
-  threshold $\tau=0.12$.
+  probes each text-generating agent's final-layer hidden state $h_j$ by
+  measuring its cosine distance $1-\cos(h_j,\mu_j)$ to a calibrated
+  role-specific benign centroid $\mu_j$ (flagging when distance exceeds
+  $\tau=0.12$). Because a silent zombie node writes only KV tensors and emits
+  no generated tokens, AcMAS has no generation-time probe point at $v_c$ itself
+  and can only inspect downstream generating agents $v_j$.
   \item An \textbf{OS-level edge reference monitor} (\texttt{EdgeTensorReferenceMonitor})
-  situated directly on the inter-agent \texttt{/dev/shm} shared-memory tensor
-  bus, validating cryptographic HMAC-SHA256 headers and gating transmitted
-  handoff tensors by centroid cosine distance, per-layer norm ratio, and
-  spectral outlier deviation, falling back to safe empty/benign context upon
-  rejection.
+  situated directly on the inter-agent POSIX \texttt{/dev/shm} shared-memory
+  tensor bus (Linux's RAM-backed \texttt{tmpfs} filesystem enabling zero-copy
+  \texttt{mmap} IPC between agent processes). Before the downstream executor
+  ingests an incoming KV handoff, the monitor verifies a keyed
+  \textbf{HMAC-SHA256} integrity tag (rejecting external tampering or bus
+  spoofing) and evaluates three statistical anomaly signals over monitored
+  layers $\mathcal{S}$: (i) \emph{position-pooled cosine distance}
+  $1-\cos(\bar H, \mu_{\text{edge}})$, obtained by averaging keys and values
+  across token positions into a length-invariant vector and comparing against a
+  calibrated benign handoff centroid; (ii) \emph{per-layer Frobenius (L2) norm
+  ratio} $\|H^{(\ell)}\|_F / \mu_{\text{norm}}^{(\ell)}$, detecting abnormal
+  tensor energy inflation; and (iii) \emph{spectral concentration shift}
+  $|\sigma_1(H^{(\ell)})/\|H^{(\ell)}\|_F - \mu_{\text{spec}}^{(\ell)}|$,
+  measuring how strongly layer energy concentrates onto its top singular value
+  $\sigma_1$ (specifically catching low-rank/1D steering directions even when
+  global cosine shift is small). Upon rejection (\texttt{mode="gate"}), the
+  runtime quarantines the poisoned KV cache and falls back to clean unperturbed
+  context. Note that cryptographic HMAC authentication and statistical geometry
+  gating are complementary: HMAC blocks external bus tampering ($100\%$
+  rejection), whereas statistical gating catches an already-compromised zombie
+  process that holds its own valid signing key.
 \end{enumerate}
 
 \begin{figure}[t]
@@ -292,39 +337,73 @@ executes inside a Linux environment running Ubuntu~24.04.4~LTS with Linux kernel
 using Python~3.13.16, PyTorch~2.14.1+cu130, CUDA~13.0, \texttt{transformers}~4.53.3,
 \texttt{bitsandbytes}~0.50.2, and \texttt{agentdojo}~0.1.35. Because \texttt{sm\_75}
 hardware lacks native Tensor Core \texttt{bfloat16} acceleration (which falls
-back to slow emulation), all primary T4 runs execute in hardware \texttt{float16}
-compute over 4-bit NF4 double-quantized weights~\citep{dettmers2023qlora}.
-Early topology and stealth baselines (\texttt{M4}, \texttt{M4b}, \texttt{M4c},
-\texttt{M5}) ran on an $8$~GB NVIDIA RTX~2080~SUPER with \texttt{bfloat16}
-compute.
+back to slow software emulation), all primary T4 runs execute in hardware
+\texttt{float16} compute over 4-bit \emph{NormalFloat} (NF4) double-quantized
+weights~\citep{dettmers2023qlora} (QLoRA-style weight compression allowing a
+3B-parameter model plus PGD backpropagation to fit inside $15$~GB VRAM) using
+PyTorch's fused Scaled Dot-Product Attention (SDPA) kernel. Early topology and
+stealth baselines (\texttt{M4}, \texttt{M4b}, \texttt{M4c}, \texttt{M5}) ran on
+an $8$~GB NVIDIA RTX~2080~SUPER with \texttt{bfloat16} compute.
 
 \paragraph{Backbone and latent channel.}
 All victim agents share \texttt{Qwen2.5-3B-Instruct}~\citep{qwen25} ($L=36$
-layers, hidden width $2048$, grouped-query attention with $2$ KV heads of
-dimension $128$). The planner builds a KV cache over the benign user context;
-that tensor is prepended to downstream agents' attention caches across chosen
-layers without textual serialization.
+layers, hidden width $2048$, grouped-query attention [GQA] in which query heads
+share $n_{\text{kv}}=2$ KV heads of dimension $d_h=128$ per layer). The planner
+builds a KV cache over the benign user context; that tensor is prepended to
+downstream agents' attention caches across all layers without textual
+serialization.
 
 \paragraph{OS-level IPC bus and reference monitor.}
 To ground latent MAS handoffs in systems reality, we implement
 \texttt{SharedMemoryTensorBus} backed by POSIX \texttt{/dev/shm} memory-mapped
-buffers. Each handoff serializes contiguous layer buffers alongside a
-fixed header carrying shape metadata and an HMAC-SHA256 tag over header and
-payload bytes. On receipt, \texttt{EdgeTensorReferenceMonitor} verifies the MAC
-and computes statistical telemetry (cosine distance to a calibrated benign
-centroid, norm ratio, and spectral energy ratio), blocking or quarantining
-anomalous edges before downstream attention.
+buffers. Each handoff packs contiguous layer buffers alongside a fixed binary
+header carrying shape, sequence nonce, and dtype metadata plus a $32$-byte
+HMAC-SHA256 tag computed over header and payload bytes. On receipt,
+\texttt{EdgeTensorReferenceMonitor} verifies the MAC and computes the three
+statistical signals defined in Section~\ref{sec:threat} (cosine distance, norm
+ratio, and spectral concentration shift), blocking or quarantining anomalous
+edges before downstream attention.
 
-\paragraph{Benchmarks.}
-We evaluate across four complementary testbeds: (i) \textbf{AgentDojo}~\citep{agentdojo}
-($24$ user/injection pairs across \texttt{workspace}, \texttt{banking}, and
-\texttt{slack} suites); (ii) \textbf{Microsoft TAMAS}~\citep{tamas} ($20$
-four-agent workflows spanning \texttt{finance}, \texttt{healthcare},
-\texttt{legal}, \texttt{education}, and \texttt{news}); (iii) \textbf{LatentMAS}
-four-agent collaborative reasoning~\citep{latentmas} on \texttt{GSM8K}~\citep{gsm8k}
-and \texttt{ARC-Challenge}~\citep{arc} ($n=15$ per dataset); and (iv) synthetic
-multi-topology graphs (chain, star, tree, reconvergent DAG, pure-latent chains
-of depth $2$--$6$).
+\paragraph{Benchmarks and evaluation metrics.}
+We evaluate across four complementary testbeds:
+(i) \textbf{AgentDojo}~\citep{agentdojo} ($24$ pairs across \texttt{workspace}
+email/calendar/files, \texttt{banking} transfers, and \texttt{slack} messaging),
+where each pair combines a benign user request with an attacker injection goal
+inside a sandboxed mock environment;
+(ii) \textbf{Microsoft TAMAS} (\emph{Threats and Attacks in Multi-Agent
+Systems})~\citep{tamas} ($20$ four-agent workflows spanning \texttt{finance},
+\texttt{healthcare}, \texttt{legal}, \texttt{education}, and \texttt{news}),
+comparing clean runs, text Direct Prompt Injection (DPI---explicit malicious
+instructions appended to the user query), and latent attacks;
+(iii) \textbf{LatentMAS} four-agent collaborative reasoning
+(\texttt{Planner}$\to$\texttt{Critic}$\to$\texttt{Refiner}$\to$\texttt{Judger})~\citep{latentmas}
+on \textbf{GSM8K}~\citep{gsm8k} (grade-school arithmetic word problems) and
+\textbf{ARC-Challenge}~\citep{arc} (multiple-choice science questions), $n=15$
+per dataset, measuring both token savings and exact-target wrong-answer
+hijacking; and
+(iv) \textbf{synthetic multi-topology graphs} (chain, star, tree, reconvergent
+DAG, and pure-latent chains of depth $2$--$6$), where \emph{reach}
+(forced-marker survival) measures whether a perturbation injected only at the
+root planner causes a downstream agent $k$ hops away to emit a benign sentinel
+word (\texttt{"BANANA"}), isolating multi-hop propagation from tool schemas.
+
+Across these testbeds we report five core metrics: \textbf{Attack Success Rate
+(ASR)} is the fraction of trials in which the unauthorized action or wrong
+target answer actually executes and passes programmatic post-execution
+verification (note that AgentDojo names its injection-success predicate
+\texttt{security}: \texttt{security=true} means the \emph{attack succeeded} and
+breached the environment, whereas \texttt{security=false} means the environment
+remained safe); \textbf{Benign Utility} is the fraction of trials completing
+the user's original benign task; \textbf{Target Negative Log-Likelihood (NLL)}
+is $-\sum_{t=1}^{m}\log p_\theta(s_t\mid\dots)$ summed over the $m$ tokens of
+the target unauthorized tool call ($\text{NLL}\approx 0$ indicates near-$100\%$
+probability of emitting the exact unauthorized call, while $\text{NLL}\sim 100$
+indicates near-zero probability); and detector \textbf{True Positive Rate (TPR)}
+and \textbf{False Positive Rate (FPR)} are the fractions of attacked and clean
+handoffs flagged, respectively. On TAMAS, the small $3$B backbone already
+invokes sensitive target tools unprompted on $20.0\%$ of clean workflows
+(concentrated in \texttt{news} and \texttt{healthcare}), establishing the clean
+baseline floor that an ideal defense restores.
 
 % ===========================================================================
 \section{Method}
@@ -332,55 +411,137 @@ of depth $2$--$6$).
 
 \paragraph{Full-space KV PGD.}
 On compromised edge $(c\!\to\!j)$, the adversary replaces the clean KV handoff
-$H^{\mathrm{clean}}_{c\to j}$ with $H^{\mathrm{clean}}_{c\to j}+\Delta$, where
-$\Delta=\{\Delta_K^{(\ell)},\Delta_V^{(\ell)}\}_{\ell\in\mathcal S}$ spans keys
-and values across target layers $\mathcal S$. Treating downstream tokens $x_j$
-and frozen weights $\theta$ as differentiable context, the attacker minimizes
-teacher-forced target tool-call negative log-likelihood:
+$H^{\mathrm{clean}}_{c\to j}$ (of prompt length $T$) with
+$H^{\mathrm{clean}}_{c\to j}+\Delta$, where
+$\Delta=\{\Delta_K^{(\ell)},\Delta_V^{(\ell)}\}_{\ell\in\mathcal S}$ optimizes
+\emph{all coordinates} across both key and value tensors (\texttt{K+V}
+``carriers''), all KV heads, and all $T$ positions within a chosen subset of
+transformer layers $\mathcal S$ (e.g., $\mathcal S=\{20,24,28,32\}$). Treating
+downstream prompt tokens $x_j$ and frozen weights $\theta$ as differentiable
+context, the attacker minimizes \emph{teacher-forced} target tool-call negative
+log-likelihood---scoring every target token $s_t$ conditioned on the exact
+preceding target tokens $s_{<t}$ in a single differentiable forward pass:
 \begin{equation}
 \label{eq:obj}
 \mathcal L(\Delta) \;=\; -\sum_{t=1}^{m}
 \log p_\theta\!\big(s_t \mid s_{<t},\, H^{\mathrm{clean}}_{c\to j}+\Delta,\, x_j\big),
 \end{equation}
-using Adam ($\text{lr}=0.02$) followed after each step by a per-layer norm-ball
-projection:
+using Adam ($\text{lr}=0.02$) followed after each step by a per-layer L2
+norm-ball projection capped by multiplicative norm ratio $\rho \in \{4,8,16\}$:
 \begin{equation}
 \label{eq:proj}
 \big\lVert H^{\mathrm{clean},(\ell)}+\Delta^{(\ell)}\big\rVert_2
 \;\le\; \rho\,\big\lVert H^{\mathrm{clean},(\ell)}\big\rVert_2.
 \end{equation}
 
-\paragraph{White-box baselines and universal KV prefix patches.}
-To isolate channel expressivity (\texttt{M9}), we compare full-space PGD against
-(a) white-box discrete \textbf{GCG}~\citep{zou2023gcg} optimizing an adversarial
-suffix on either decoded text communication or re-encoded into a latent KV
-cache, and (b) rank-1 \textbf{1D Out-of-Sight} steering~\citep{outofsight}. For
-zero-shot cross-task transfer (\texttt{M10}), instead of matching a fixed task
-sequence length, we optimize either a position-independent $1$-slot
-\textbf{Broadcast Delta} or a fixed $16$-slot \textbf{Universal KV Prefix Patch}
-jointly over training user tasks $\{\texttt{user\_task\_0..2}\}$ and prepend it
-at inference with zero test-time gradient steps.
+\paragraph{White-box baselines and text conversation points (\texttt{M9}).}
+To isolate why high-dimensional continuous KV caches outperform discrete or
+low-rank attacks, \texttt{M9} Part~A compares full-space KV PGD against:
+(a) white-box discrete \textbf{GCG} (Greedy Coordinate Gradient)~\citep{zou2023gcg},
+which optimizes a $12$-token adversarial text suffix by swapping discrete tokens
+using embedding gradients, either transmitted as plain text
+(\texttt{wb\_gcg\_text\_on\_text\_comm}) or inserted into the zombie prompt and
+passed through its KV cache (\texttt{wb\_gcg\_text\_on\_latent\_comm}); and
+(b) \textbf{1D Out-of-Sight (OoS)} steering~\citep{outofsight}, which computes
+a single fixed rank-$1$ displacement direction between malicious and benign
+prompts and adds a scaled copy ($\rho=8$) to the KV cache.
+In \texttt{M9} Part~B, we test the causal effect of \textbf{text conversation
+points}---inter-agent boundaries where an agent must decode its internal state
+into a natural-language message that the next agent re-encodes---in a
+three-agent pipeline (\texttt{Planner}$\to$\texttt{Coordinator}$\to$\texttt{Executor}):
+\texttt{0\_conv\_pure\_latent} passes KV caches on both edges ($0$ text
+boundaries, enabling end-to-end 2-hop PGD); \texttt{1\_conv\_late\_unadapted}
+inserts a text decode/re-encode step between Coordinator and Executor without
+adapting the 1-hop PGD perturbation; \texttt{1\_conv\_late\_relay\_adapted}
+explicitly optimizes the 1-hop PGD perturbation to make the Coordinator
+verbalize the malicious instruction into its text message;
+\texttt{1\_conv\_early\_wb\_text} places the text boundary first (using white-box
+GCG) followed by a latent handoff; and \texttt{2\_conv\_all\_text} uses text on
+both edges.
+
+\paragraph{Zero-shot universal KV payloads (\texttt{M10}).}
+Standard per-query KV PGD cannot transfer directly to unseen tasks because its
+perturbation $\Delta$ has the exact sequence length $T$ of one specific prompt,
+whereas an unseen prompt has a different length $T'\neq T$. To achieve
+\emph{zero-shot} transfer ($0$ optimization steps at test time), we train two
+length-agnostic payloads offline over three source tasks
+(\texttt{user\_task\_0..2}) on layers $\mathcal{S}=\{20,24,28,32\}$ ($\rho=8$):
+\begin{enumerate}
+  \item \textbf{1-Slot Broadcast Delta:} a single learned key/value vector per
+  attacked layer, $\Delta K_{\mathrm{bcast}}^{(\ell)}, \Delta V_{\mathrm{bcast}}^{(\ell)}
+  \in \mathbb{R}^{1 \times n_{\text{kv}} \times 1 \times d_h}$, broadcast
+  (added) identically across every token position $1\dots T'$ of any unseen
+  clean handoff:
+  $K_{\mathrm{out}}^{(\ell)} = K_{\mathrm{clean}}^{(\ell)} + \Delta K_{\mathrm{bcast}}^{(\ell)}$
+  (and analogously for $V$).
+  \item \textbf{16-Slot Universal KV Prefix Patch:} a fixed block of $P=16$
+  learned \emph{virtual KV token slots} of shape
+  $(1, n_{\text{kv}}, 16, d_h)$ per layer---analogous to prefix-tuning KV
+  states. We initialize a neutral $16$-token base cache
+  $(K_{\mathrm{base}}^{(\ell)}, V_{\mathrm{base}}^{(\ell)})$ across all $36$
+  layers from a benign filler string, then jointly optimize trainable offsets
+  $(\Delta K_{\mathrm{patch}}^{(\ell)}, \Delta V_{\mathrm{patch}}^{(\ell)})$ on
+  $\ell \in \mathcal{S}$ over the $3$ training tasks. At test time on any
+  unseen prompt of arbitrary length $T'$, the zombie leaves the clean tokens
+  untouched and \emph{concatenates} the $16$ virtual slots along the sequence
+  dimension onto the end of the clean handoff:
+  \begin{equation}
+  \label{eq:kvpatch}
+  K_{\mathrm{out}}^{(\ell)} = \big[K_{\mathrm{clean}}^{(\ell)} \;\big\|\; K_{\mathrm{base}}^{(\ell)} + \Delta K_{\mathrm{patch}}^{(\ell)}\big],
+  \qquad
+  V_{\mathrm{out}}^{(\ell)} = \big[V_{\mathrm{clean}}^{(\ell)} \;\big\|\; V_{\mathrm{base}}^{(\ell)} + \Delta V_{\mathrm{patch}}^{(\ell)}\big],
+  \end{equation}
+  producing a $(T'+16)$-slot KV prefix consumed directly by the downstream
+  executor with zero test-time gradient steps.
+\end{enumerate}
+We evaluate both payloads zero-shot across three axes: \textbf{Cross-Task}
+($16$ unseen prompt/injection pairs), \textbf{Cross-Topology} ($3$-worker Star
+fan-out, $3$-hop pure-latent chain, and a \emph{reconvergent DAG} merging either
+one patched branch with one clean branch, $[H_{\text{patch}}\|H_{\text{clean}}]$,
+or naively duplicating the same patch on both branches,
+$[H_{\text{patch}}\|H_{\text{patch}}]$), and \textbf{Cross-Schema} (a
+paraphrased executor system prompt combined with reversed tool-definition order).
 
 \paragraph{Adaptive dual evasion (\texttt{M5}, \texttt{M8}).}
-Against both own-activation AcMAS probing and edge-level statistical geometry,
-we augment Eq.~\eqref{eq:obj} with simultaneous centroid-alignment penalties:
+To test whether an attacker who knows our statistical detectors can evade them
+simultaneously, we augment Eq.~\eqref{eq:obj} with differentiable penalties
+pulling both the downstream agent's hidden state $h_j(\Delta)$ toward its clean
+AcMAS centroid $\mu_j$ and the position-pooled handoff $\bar H(\Delta)$ toward
+the Edge Monitor's benign centroid $\bar H_{\mathrm{ref}}$ (plus a relative L2
+norm term with $\alpha=0.1$):
 \begin{equation}
 \label{eq:dualstealth}
 \min_{\Delta}\; \mathcal L(\Delta)
 \;+\; \lambda_{\mathrm{acmas}}\big(1-\cos(h_j(\Delta),\mu_j)\big)
 \;+\; \lambda_{\mathrm{edge}}\Big(\big(1-\cos(\bar H(\Delta),\bar H_{\mathrm{ref}})\big) + \alpha\big(\|\Delta\|/\|H^{\mathrm{clean}}\|\big)^2\Big),
 \end{equation}
-sweeping $\lambda_{\mathrm{acmas}}\in[0,50]$ and $\lambda_{\mathrm{edge}}\in[0,2500]$.
+conducting a \emph{Pareto sweep} over $\lambda_{\mathrm{acmas}}\in[0,50]$ and
+$\lambda_{\mathrm{edge}}\in[0,2500]$ to map the trade-off between attack
+success and detector evasion.
 
 \paragraph{Black-box threat spectrum (\texttt{M12}).}
 To probe whether external adversaries can mount silent zombie attacks without
-open victim weights, we test: \texttt{BB-0} full-space evolution strategies ($60$
-queries), \texttt{BB-1} SVD subspace NES~\citep{outofsight} scaling Gaussian
-variance $\sigma_\ell=0.25\|K_\ell\|$ and $\text{lr}_\ell=0.45\|K_\ell\|$
-($241$ queries), \texttt{BB-2} decision-only greedy string-reward search ($25$
-queries), and \texttt{BB-3a/b} cross-model \texttt{Qwen2.5-1.5B}$\to$\texttt{3B}
-surrogate transfers bridged via linear ridge Cache-to-Cache (C2C) projections
-trained on aligned prompt pairs~\citep{c2c}.
+victim weights or gradients (\texttt{torch.no\_grad}), we test six regimes:
+\textbf{\texttt{BB-0} (Full-Space ES)}: gradient-free Evolution Strategies
+perturbing the full KV tensor with isotropic Gaussian noise using only target
+log-probability queries ($60$ queries);
+\textbf{\texttt{BB-1} (SVD Subspace NES)}: Natural Evolution Strategies
+restricting search to a low-rank ($r=16$) orthonormal basis built via Singular
+Value Decomposition (SVD) of benign-vs.-malicious KV differences, scaling
+perturbation noise $\sigma_\ell=0.25\|K_\ell\|$ and step size
+$\text{lr}_\ell=0.45\|K_\ell\|$ across antithetic ($\pm$) pairs ($241$
+queries);
+\textbf{\texttt{BB-2} (Decision-Only Search)}: hard-label search observing
+\emph{only the final decoded text} (zero logits) over $25$ rollouts using a
+discrete string reward ($+1$ for valid \texttt{<tool\_call>} syntax, $+2$ for
+matching target tool name, up to $+3$ for matching target arguments); and
+\textbf{\texttt{BB-3a/b} (Cross-Model Surrogate \& C2C Bridge)}: optimizing a
+$16$-slot KV patch white-box on a smaller surrogate
+(\texttt{Qwen2.5-1.5B-Instruct}) and transferring it to the $3$B victim either
+directly unaligned (\texttt{BB-3a}) or mapped through a closed-form linear
+ridge-regression Cache-to-Cache (C2C) projection matrix fitted on aligned
+benign prompts~\citep{c2c} (\texttt{BB-3b}, evaluated both at $0$ victim
+queries and after query-based scale refinement).
 
 % ===========================================================================
 \section{Results}
@@ -389,19 +550,23 @@ trained on aligned prompt pairs~\citep{c2c}.
 \subsection{Single-Edge Action Forcing on AgentDojo (\texttt{M3})}
 \label{sec:results-m3}
 On AgentDojo \texttt{workspace} (\texttt{user\_task\_0} + \texttt{injection\_task\_0}),
-the clean executor benignly queries the calendar and triggers \texttt{security=false}.
-Table~\ref{tab:m3} shows that all four PGD layer/budget settings---including the
-deep six-layer configuration \texttt{deep6\_n16}---drive exact target
-\texttt{send\_email} negative log-likelihood from $118.37$ ($117.89$ for 6 layers)
-below $10^{-2}$ within $\sim 40$ steps (Figure~\ref{fig:m3}), achieving $100\%$
-forced greedy match and post-execution \texttt{security=true}.
+the clean executor benignly queries the calendar and leaves the sandbox safe
+(AgentDojo's injection-success flag \texttt{security=false}). Table~\ref{tab:m3}
+shows that all four PGD layer/budget configurations---targeting either $4$ late
+layers (\texttt{late4\_n8}), $4$ evenly spaced layers (\texttt{spread4\_n8},
+\texttt{spread4\_n16}), or $6$ deep layers (\texttt{deep6\_n16}) under norm cap
+$\rho\in\{8,16\}$---drive exact target \texttt{send\_email} negative
+log-likelihood from $118.37$ ($117.89$ for 6 layers) below $10^{-2}$ within
+$\sim 40$ steps (Figure~\ref{fig:m3}), achieving $100\%$ forced greedy decoding
+match and verified unauthorized email execution (\texttt{security=true}).
 
 \begin{table}[t]
 \centering
 \caption{M3 perturbation-budget and layer-placement sweep on AgentDojo
 \texttt{workspace} (\texttt{user\_task\_0} + \texttt{injection\_task\_0},
-\texttt{Qwen2.5-3B-Instruct} 4-bit NF4). Clean baseline \texttt{security} is
-\texttt{false} in every cell.}
+\texttt{Qwen2.5-3B-Instruct} 4-bit NF4). Clean baseline leaves the sandbox safe
+(\texttt{security=false}); \texttt{security=true} denotes verified unauthorized
+tool execution (attack success).}
 \label{tab:m3}
 \begin{tabular}{llccccc}
 \toprule
@@ -428,7 +593,7 @@ for all four layer placements and budgets.}
 Table~\ref{tab:m9} and Figure~\ref{fig:m9} resolve two crucial methodological
 questions ($n=8$ matched AgentDojo task-injection pairs):
 \begin{enumerate}
-  \item \textbf{Channel \& DOF advantage:} High-dimensional continuous KV PGD
+  \item \textbf{Channel \& degrees-of-freedom (DOF) advantage:} High-dimensional continuous KV PGD
   achieves $62.5\%$ ASR (mean target NLL $0.029$) in $64.74$~s while completely
   evading text/perplexity ($0.0\%$) and AcMAS ($0.0\%$) monitors. White-box GCG
   in text space achieves only $37.5\%$ ASR despite taking nearly twice as long
@@ -437,7 +602,7 @@ questions ($n=8$ matched AgentDojo task-injection pairs):
   steering fails completely ($0.0\%$ ASR, NLL $699.344$, $100.0\%$ flagged by
   both AcMAS and Edge detectors).
   \item \textbf{Causal effect of conversation boundaries:} In a three-agent
-  pipeline (\texttt{planner}$\to$\texttt{relay}$\to$\texttt{executor}), zero
+  pipeline (\texttt{Planner}$\to$\texttt{Coordinator}$\to$\texttt{Executor}), zero
   text conversation points (\texttt{0\_conv\_pure\_latent}) yields $62.5\%$ ASR
   and $0.0\%$ text detection. Inserting even a \emph{single} text decode/re-encode
   conversation boundary collapses end-to-end ASR to $0.0\%$ across all four
@@ -484,23 +649,28 @@ conversation boundaries (right).}
 \label{sec:results-reach}
 Figure~\ref{fig:graph_topologies} contrasts the four multi-agent graph topologies
 evaluated across \texttt{M4b}--\texttt{M4d}, \texttt{M9}, and \texttt{M10}.
-Using forced-marker survival ($n=3$) across chain, star, tree, and reconvergent
-DAG topologies:
+Using forced-marker survival (testing whether a perturbation at the root
+planner causes a downstream agent $k$ hops away to emit the benign sentinel
+word \texttt{"BANANA"}, $n=3$) across chain, star, tree, and reconvergent
+directed acyclic graph (DAG) topologies:
 \begin{itemize}
   \item \textbf{Selective routing \& fan-out:} In a star hub of out-degree $3$,
   perturbing outgoing caches controls $9/9$ workers; perturbing a single branch
   in a two-branch tree affects only the chosen branch ($1.0, 1.0, 0.0$ by depth)
   while leaving the sibling branch at $0.0$.
   \item \textbf{Text-mediated horizon vs.\ pure-latent chains:} When intermediate
-  nodes decode to text (\texttt{M4b}, Table~\ref{tab:reach}), marker survival
-  holds at $1.00$ through hop~$2$ and decays to $0.33$ ($\rho=4,8$) or $0.67$
+  nodes decode to text before passing context onward (\texttt{M4b}, Table~\ref{tab:reach}),
+  marker survival holds at $1.00$ through hop~$2$ and decays to $0.33$ ($\rho=4,8$) or $0.67$
   ($\rho=16$) from hop~$3$ to hop~$5$, with multi-hop black-box ES failing at
-  $0.0$ reach. When two text-mediated branches reconverge (\texttt{M4c}), only
-  merging two compromised branches yields target control ($0.33$, mean
-  $\log p=-4.28$) versus $0.0$ for one branch ($-4.75$) or compromised$+$clean
-  ($-8.41$). By contrast, removing intermediate text decodes in a differentiable
-  pure-latent chain (\texttt{M4d}) eliminates the depth bound completely: reach
-  remains $1.00$ across all tested depths $2,3,4,5,6$ ($n=3$, Table~\ref{tab:purelatent},
+  $0.0$ reach. When two text-mediated branches reconverge into a merge node
+  (\texttt{M4c}), only merging two compromised branches yields target control
+  ($0.33$, mean $\log p=-4.28$) versus $0.0$ for one branch ($-4.75$) or one
+  compromised plus one clean branch ($-8.41$, diluted by the clean path). By
+  contrast, removing intermediate text decodes in a differentiable pure-latent
+  chain (\texttt{M4d}---where intermediate agents process their role prompts
+  directly over the incoming KV cache without emitting tokens) eliminates the
+  depth bound completely: reach remains $1.00$ across all tested depths
+  $2,3,4,5,6$ ($n=3$, Table~\ref{tab:purelatent},
   Figure~\ref{fig:reachstealth}(a)) with healthy non-vanishing initial gradient
   norms ($2.45$--$3.23$).
 \end{itemize}
@@ -608,16 +778,20 @@ Pure-latent final mean $\log p$ & --- & $0.000$ & $-0.001$ & $-0.001$ & $-0.001$
 
 \subsection{Zero-Shot Cross-Task, Cross-Topology, and Cross-Schema Transfer (\texttt{M10})}
 \label{sec:results-m10}
-An adversary can amortize optimization offline into a reusable KV prefix
-payload applied with \emph{zero gradient steps at test time} (Table~\ref{tab:m10},
+An adversary can amortize optimization offline into a length-agnostic KV
+payload (Section~\ref{sec:method}, Eq.~\eqref{eq:kvpatch}) applied with
+\emph{zero gradient steps at test time} (Table~\ref{tab:m10},
 Figure~\ref{fig:m10}). Across $16$ unseen AgentDojo pairs, a $1$-slot Broadcast
-Delta transfers at $56.2\%$ ASR (mean NLL $4.742$), while a $16$-slot Universal KV
-Prefix Patch reaches $81.2\%$ ASR (mean NLL $2.059$). Across new topologies ($n=6$),
-the universal prefix patch transfers zero-shot at $50.0\%$ on a $3$-worker Star
-graph, $50.0\%$ across a $3$-agent pure-latent chain, and $33.3\%$ on a
-single-patch reconvergent DAG ($0.0\%$ if naively dual-merged without adaptation),
-while maintaining $50.0\%$ ASR under paraphrased system prompts and reversed
-tool schemas.
+Delta (one vector added to every clean token position) transfers at $56.2\%$
+ASR (mean NLL $4.742$), while a $16$-slot Universal KV Prefix Patch ($16$
+virtual KV slots concatenated onto the clean handoff) reaches $81.2\%$ ASR
+(mean NLL $2.059$). Across new topologies ($n=6$), the $16$-slot prefix patch
+transfers zero-shot at $50.0\%$ on a $3$-worker Star graph, $50.0\%$ across a
+$3$-agent pure-latent chain, and $33.3\%$ on a single-patch reconvergent DAG
+($[H_{\text{patch}}\|H_{\text{clean}}]$, dropping to $0.0\%$ when naively
+duplicating the same patch on both merged branches $[H_{\text{patch}}\|H_{\text{patch}}]$
+without adaptation), while maintaining $50.0\%$ ASR under paraphrased executor
+prompts and reversed tool schemas.
 
 \begin{table}[t]
 \centering
@@ -755,17 +929,21 @@ and norm ratio from $1.0514$ to $1.0094$, bypassing unauthenticated statistical
 checks ($0.0\%$ flag rate at $100.0\%$ ASR).
 
 This highlights why statistical anomaly detection alone must be paired with
-cryptographic transport guarantees on the OS bus. Benchmarking
+cryptographic transport guarantees on the OS bus (while noting the complementary
+limit: HMAC prevents external bus tampering or spoofing, whereas an
+already-compromised zombie holding its own signing key must still be countered
+by statistical geometry checks or text boundaries). Benchmarking
 \texttt{SharedMemoryTensorBus} over POSIX \texttt{/dev/shm} on Linux kernel
 \texttt{6.6.159+} ($25$ trials per sequence length, $36$-layer KV tensors in
 \texttt{bf16}, Table~\ref{tab:shm}, Figure~\ref{fig:shm}) confirms $10/10$
 ($100.0\%$) rejection of spoofed or bit-flipped payloads via HMAC-SHA256. At the
 same time, our measurement uncovers a critical systems insight: software
-HMAC-SHA256 hashing over $2.25$--$36.0$~MB at $\sim 149$--$152$~MB/s increases
+HMAC-SHA256 hashing over $2.25$--$36.0$~MB at $\sim 134$--$152$~MB/s increases
 round-trip latency ($16.41\text{--}236.07$~ms) relative to an unauthenticated
 pickle/\texttt{torch.save} baseline ($11.20\text{--}64.41$~ms), motivating
-hardware-accelerated AEAD or kernel-offloaded NIC/CXL authentication in
-production latent IPC fabrics.
+hardware-accelerated Authenticated Encryption with Associated Data (AEAD) or
+kernel-offloaded Network Interface Card (NIC) / Compute Express Link (CXL)
+authentication in production latent IPC fabrics.
 
 \begin{table}[t]
 \centering

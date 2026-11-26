@@ -154,6 +154,10 @@ python scripts/run_colab_suite.py --out-dir paper/results
 ## Ethical Scope & Defensive Framing
 All evaluations run exclusively inside sandboxed mock tool environments (AgentDojo mock workspaces, synthetic TAMAS workflows, and offline LatentMAS datasets). No real credentials, external communications, or harmful real-world payloads are used.
 
+## License
+- **Code** (`latent_mas_attack/`, `scripts/`, `tests/`, `notebooks/`): Released under the [MIT License](LICENSE).
+- **Paper, Report, & Figures** (`paper/`, `report/`, `docs/assets/`): Copyright © 2026 Virgile Thonnier. All rights reserved (shared for academic review, reproducibility, and citation).
+
 ## Citation
 ```bibtex
 @misc{thonnier2026silentzombies,
