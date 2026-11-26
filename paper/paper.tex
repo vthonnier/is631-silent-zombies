@@ -16,6 +16,9 @@
 \usepackage{bm}
 \usepackage[numbers]{natbib}
 \usepackage{amsthm}
+\usepackage{placeins}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,fit,backgrounds}
 
 \newtheorem{definition}{Definition}
 
@@ -195,7 +198,8 @@ feedback (\texttt{BB-0}, \texttt{BB-1}), decision-only black-box rewards
 transfers (\texttt{BB-3a}, \texttt{BB-3b}).
 
 \paragraph{Defender.}
-The defender operates three concurrent inspection layers:
+As illustrated in the topological threat diagram of Figure~\ref{fig:threat_topology},
+the defender operates three concurrent inspection layers:
 \begin{enumerate}
   \item A \textbf{text/perplexity monitor} inspecting every decoded inter-agent
   message and tool return (catching lexical prompt injections and high-perplexity
@@ -211,6 +215,70 @@ The defender operates three concurrent inspection layers:
   spectral outlier deviation, falling back to safe empty/benign context upon
   rejection.
 \end{enumerate}
+
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  >=Latex,
+  font=\sffamily\footnotesize,
+  nodebox/.style={draw, rounded corners=4pt, align=center, minimum height=1.15cm, inner sep=5pt, line width=0.8pt},
+  monbox/.style={draw, rounded corners=3pt, align=center, inner sep=4.5pt, line width=0.75pt}
+]
+  % Core pipeline nodes
+  \node[nodebox, fill=gray!8, draw=gray!65!black, text width=2.0cm] (user) at (0, 0)
+    {\textbf{User Task}\\[-1pt]{\scriptsize Benign prompt $x$}};
+
+  \node[nodebox, fill=red!8, draw=red!70!black, text width=2.6cm] (zombie) at (3.45, 0)
+    {\textbf{Zombie Node $v_c$}\\[-1pt]{\scriptsize Planner ($f_\theta$ frozen)}\\[-2pt]{\scriptsize \emph{0 malicious tokens}}};
+
+  \node[nodebox, fill=teal!8, draw=teal!70!black, line width=1.05pt, text width=3.65cm] (bus) at (8.85, 0)
+    {\textbf{POSIX \texttt{/dev/shm} Edge Bus}\\[-1pt]{\scriptsize \texttt{EdgeTensorReferenceMonitor}}\\[-2pt]{\scriptsize HMAC-SHA256 + $d_{\cos},\,\|H\|/\|H_0\|$}};
+
+  \node[nodebox, fill=blue!7, draw=blue!65!black, text width=2.65cm] (exec) at (13.85, 0.95)
+    {\textbf{Executor $v_j$}\\[-1pt]{\scriptsize Frozen $f_\theta$ + Tools}\\[-2pt]{\scriptsize ReAct Loop}};
+
+  \node[nodebox, fill=green!8, draw=green!55!black, text width=2.85cm] (safe) at (13.85, -1.20)
+    {\textbf{Safe Clean Fallback}\\[-1pt]{\scriptsize Quarantine $\Delta$, restore}\\[-2pt]{\scriptsize benign context ($100\%$ TPR)}};
+
+  \node[nodebox, fill=orange!10, draw=orange!75!black, text width=2.75cm] (act) at (17.55, 0.95)
+    {\textbf{Tool Execution}\\[-1pt]{\scriptsize Undefended: $75$--$100\%$ ASR}\\[-2pt]{\scriptsize Gated: Clean Baseline}};
+
+  % Monitors (Blind / Bypassed)
+  \node[monbox, dashed, fill=gray!6, draw=gray!65!black, text width=3.35cm] (txtmon) at (5.90, 1.90)
+    {\textbf{1. Text / PPL Monitor}\\[-1pt]{\scriptsize No text on latent edge ($0\%$ catch)}};
+
+  \node[monbox, dashed, fill=orange!7, draw=orange!75!black, text width=3.65cm] (acmas) at (13.85, 2.70)
+    {\textbf{2. AcMAS Activation Probe}\\[-1pt]{\scriptsize No probe at silent $v_c$; evaded}\\[-2pt]{\scriptsize at $v_j$ ($0\%$ catch, $\lambda_{\mathrm{acmas}}\ge 1$)}};
+
+  % Edges
+  \draw[->, thick, draw=gray!70!black] (user.east) -- (zombie.west);
+  \draw[->, very thick, draw=red!75!black] (zombie.east) --
+    node[above=2pt, font=\sffamily\scriptsize\bfseries, text=red!75!black] {$H^{\mathrm{clean}}_{c\to j} + \Delta$}
+    node[below=2pt, font=\sffamily\scriptsize, text=gray!60!black] {KV Tensor} (bus.west);
+
+  \draw[->, dashed, thick, draw=gray!65!black] (txtmon.south) -- (5.90, 0.28);
+  \draw[->, dashed, thick, draw=orange!75!black] (exec.north) --
+    node[right=2pt, font=\sffamily\scriptsize, text=orange!75!black] {$h_j$} (acmas.south);
+
+  \draw[->, thick, draw=blue!70!black] ([yshift=7pt]bus.east) --
+    node[above=1pt, sloped, font=\sffamily\scriptsize] {Pass} (exec.west);
+
+  \draw[->, thick, draw=green!55!black] ([yshift=-7pt]bus.east) --
+    node[below=1pt, sloped, font=\sffamily\scriptsize\bfseries] {Gate / Bad MAC} (safe.west);
+
+  \draw[->, thick, draw=green!55!black] (safe.north) --
+    node[right=2pt, font=\sffamily\scriptsize, text=green!50!black] {Clean KV} (exec.south);
+
+  \draw[->, thick, draw=orange!75!black] (exec.east) -- (act.west);
+\end{tikzpicture}}
+\caption{Topological threat model and defense interposition in a latent multi-agent
+system $G=(\mathcal{V},\mathcal{E})$. Compromised node $v_c$ emits no malicious text,
+blinding surface text monitors (1) and offering no generation probe to own-activation
+detectors (2), while \texttt{EdgeTensorReferenceMonitor} (3) interposes directly on
+the POSIX \texttt{/dev/shm} KV handoff edge $(c\!\to\!j)$.}
+\label{fig:threat_topology}
+\end{figure}
 
 % ===========================================================================
 \section{Testbed and Experimental Setup}
@@ -414,6 +482,8 @@ conversation boundaries (right).}
 
 \subsection{Multi-Hop Reach Across Topologies and Pure-Latent Chains (\texttt{M4}--\texttt{M4d})}
 \label{sec:results-reach}
+Figure~\ref{fig:graph_topologies} contrasts the four multi-agent graph topologies
+evaluated across \texttt{M4b}--\texttt{M4d}, \texttt{M9}, and \texttt{M10}.
 Using forced-marker survival ($n=3$) across chain, star, tree, and reconvergent
 DAG topologies:
 \begin{itemize}
@@ -434,6 +504,87 @@ DAG topologies:
   Figure~\ref{fig:reachstealth}(a)) with healthy non-vanishing initial gradient
   norms ($2.45$--$3.23$).
 \end{itemize}
+
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  >=Latex,
+  font=\sffamily\scriptsize,
+  ag/.style={circle, draw, minimum size=0.82cm, inner sep=1pt, font=\sffamily\scriptsize\bfseries, line width=0.8pt},
+  zom/.style={ag, fill=red!12, draw=red!75!black},
+  lat/.style={ag, fill=blue!8, draw=blue!65!black},
+  tgt/.style={ag, fill=blue!16, draw=blue!80!black},
+  cln/.style={ag, fill=gray!10, draw=gray!60!black},
+  panel/.style={draw=gray!35, rounded corners=4pt, fill=gray!2}
+]
+  % Panel (a): Pure-Latent Chain
+  \draw[panel] (0, 3.05) rectangle (8.55, 5.85);
+  \node[anchor=north west, font=\sffamily\footnotesize\bfseries] at (0.18, 5.72)
+    {(a) Pure-Latent Differentiable Chain (\texttt{M4d}, \texttt{M9} 0-Conv)};
+  \node[zom] (a1) at (1.05, 4.35) {$v_1$};
+  \node[lat] (a2) at (2.95, 4.35) {$v_2$};
+  \node[lat] (a3) at (4.75, 4.35) {$v_3$};
+  \node[font=\sffamily\bfseries] (adots) at (6.10, 4.35) {$\cdots$};
+  \node[tgt] (ad) at (7.50, 4.35) {$v_d$};
+  \draw[->, very thick, red!75!black] (a1) -- node[above=2pt] {$H_1\!+\!\Delta$} (a2);
+  \draw[->, thick, blue!70!black] (a2) -- node[above=2pt] {$H_2$} (a3);
+  \draw[->, thick, blue!70!black] (a3) -- (adots);
+  \draw[->, thick, blue!70!black] (adots) -- node[above=2pt] {$H_{d-1}$} (ad);
+  \draw[->, dashed, red!70!black] (ad.south) to[bend left=16]
+    node[below=1pt, font=\sffamily\scriptsize] {End-to-end $\nabla_\Delta\mathcal{L}$ ($2.45$--$3.23$): \textbf{100\% reach ($d=2..6$), 62.5\% ASR}} (a1.south);
+
+  % Panel (b): Hybrid Chain with Text Conversation Firewall
+  \draw[panel] (8.95, 3.05) rectangle (17.55, 5.85);
+  \node[anchor=north west, font=\sffamily\footnotesize\bfseries] at (9.13, 5.72)
+    {(b) Hybrid Pipeline with Text Firewall (\texttt{M9} 1-Conv)};
+  \node[zom] (b1) at (10.05, 4.35) {$v_1$};
+  \node[lat] (b2) at (12.20, 4.35) {$v_2$};
+  \node[draw=green!55!black, fill=green!10, rounded corners=2pt, minimum height=0.88cm, inner sep=3pt, align=center, line width=0.9pt] (fw) at (14.40, 4.35)
+    {\textbf{Text}\\[-2pt]Decode $m$};
+  \node[tgt] (b3) at (16.50, 4.35) {$v_3$};
+  \draw[->, very thick, red!75!black] (b1) -- node[above=2pt] {$H_1\!+\!\Delta$} (b2);
+  \draw[->, thick, green!55!black] (b2) -- (fw);
+  \draw[->, thick, green!55!black] (fw) -- node[above=2pt] {tokens} (b3);
+  \node[anchor=south, font=\sffamily\scriptsize, text=green!45!black] at (13.25, 3.16)
+    {Discrete bottleneck severs $\nabla_\Delta\mathcal{L}$: \textbf{62.5\% $\to$ 0.0\% ASR (25--75\% Text Catch)}};
+
+  % Panel (c): Star Hub & Selective Branch Routing
+  \draw[panel] (0, 0) rectangle (8.55, 2.80);
+  \node[anchor=north west, font=\sffamily\footnotesize\bfseries] at (0.18, 2.68)
+    {(c) Star Fan-Out \& Selective Branch Routing (\texttt{M4b}, \texttt{M10})};
+  \node[zom] (c0) at (1.50, 1.22) {$v_c$};
+  \node[tgt] (cw1) at (4.45, 1.92) {$w_1$};
+  \node[tgt] (cw2) at (4.45, 1.18) {$w_2$};
+  \node[cln] (cw3) at (4.45, 0.44) {$w_3$};
+  \draw[->, very thick, red!75!black] (c0) -- node[above=1pt, sloped] {$H\!+\!\Delta$} (cw1);
+  \draw[->, very thick, red!75!black] (c0) -- (cw2);
+  \draw[->, dashed, gray!70!black] (c0) -- node[below=1pt, sloped] {clean $H$} (cw3);
+  \node[anchor=west, align=left, text width=3.35cm] at (5.05, 1.20)
+    {\textbf{Star:} $9/9$ ($100\%$) PGD,\\$50.0\%$ 0-shot patch\\[2pt]\textbf{Tree:} $100\%$ chosen path,\\$0.0\%$ clean sibling $w_3$};
+
+  % Panel (d): Reconvergent Multi-Branch DAG
+  \draw[panel] (8.95, 0) rectangle (17.55, 2.80);
+  \node[anchor=north west, font=\sffamily\footnotesize\bfseries] at (9.13, 2.68)
+    {(d) Reconvergent Multi-Branch Merge DAG (\texttt{M4c}, \texttt{M10})};
+  \node[zom] (d0) at (9.95, 1.22) {$v_0$};
+  \node[zom] (db1) at (12.05, 1.82) {$b_1$};
+  \node[cln] (db2) at (12.05, 0.62) {$b_2$};
+  \node[tgt] (dm) at (14.25, 1.22) {$v_m$};
+  \draw[->, very thick, red!75!black] (d0) -- (db1);
+  \draw[->, dashed, gray!70!black] (d0) -- (db2);
+  \draw[->, very thick, red!75!black] (db1) -- (dm);
+  \draw[->, thick, gray!70!black] (db2) -- node[below=1pt, sloped] {$[H_{b_1}\|H_{b_2}]$} (dm);
+  \node[anchor=west, align=left, text width=2.65cm] at (14.80, 1.22)
+    {\textbf{1 Adv + Clean:}\\diluted ($0.0\%$)\\[2pt]\textbf{Dual Adv / Patch:}\\$33.3\%$ reach/ASR};
+\end{tikzpicture}}
+\caption{Topological structures evaluated across multi-agent benchmarks: (a) pure-latent
+chains preserve end-to-end gradients across depths $2\dots 6$; (b) even one text
+conversation boundary acts as a causal security firewall; (c) compromised hubs broadcast
+or selectively route attacks; and (d) reconvergent merges dilute single-branch text
+cascades unless both branches carry aligned perturbations or a universal prefix patch.}
+\label{fig:graph_topologies}
+\end{figure}
 
 \begin{table}[t]
 \centering
@@ -719,6 +870,7 @@ target tool-call NLL on log scale (b).}
 \end{figure}
 
 % ===========================================================================
+\FloatBarrier
 \section{Related Work}
 \label{sec:related}
 \paragraph{Latent inter-agent collaboration and vulnerabilities.}

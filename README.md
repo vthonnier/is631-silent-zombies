@@ -1,16 +1,39 @@
-# Silent Zombies: Inference-Time Latent-Handoff Attacks on Tool-Using Multi-Agent Systems
+# Silent Zombies: Inference-Time Latent-Handoff Attacks & OS Edge Defenses in Multi-Agent Systems
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.x](https://img.shields.io/badge/PyTorch-CUDA%2013.0-ee4c2c.svg)](https://pytorch.org/)
-[![Tests](https://img.shields.io/badge/unit%20tests-14%20passed-brightgreen.svg)](#quickstart)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<div align="center">
 
-> **KAIST IS631 (Kernel & System Security) Term Project**
-> Author: **Virgile Thonnier** (`20266480`) | [`paper/paper.pdf`](paper/paper.pdf) | [`report/20266480_ThonnierVirgile_assignment3.pdf`](report/20266480_ThonnierVirgile_assignment3.pdf) | [Hugging Face Dataset](https://huggingface.co/datasets/vthonnier/is631-silent-zombies-artifacts)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-2563eb.svg)](https://www.python.org/downloads/)
+[![PyTorch CUDA 13.0](https://img.shields.io/badge/PyTorch-CUDA%2013.0-ee4c2c.svg)](https://pytorch.org/)
+[![Linux IPC](https://img.shields.io/badge/POSIX%20IPC-%2Fdev%2Fshm%20%2B%20HMAC--SHA256-0d9488.svg)](#system-architecture)
+[![Unit Tests](https://img.shields.io/badge/unit%20tests-14%2F14%20passed-16a34a.svg)](#quickstart)
+[![License: MIT](https://img.shields.io/badge/License-MIT-eab308.svg)](LICENSE)
 
-**Silent Zombies** investigates an emerging class of vulnerabilities in LLM Multi-Agent Systems (MAS) that exchange **key-value (KV) caches or hidden states directly** over a latent channel instead of natural-language messages. Under an **inference-time, victim-unmodified** threat model (the adversary optimizes perturbations via attacker-side PGD at inference time while leaving all victim weights, prompts, tools, and emitted text untouched), a single compromised node drives consequential, externally verified unauthorized tool actions while blinding both text monitors and own-activation probes ([AcMAS](https://arxiv.org/abs/2607.06807)).
+**KAIST IS631 (Kernel & System Security) Term Project**  
+**Author:** Virgile Thonnier (`20266480`) · [Full Research Paper (`paper/paper.pdf`)](paper/paper.pdf) · [IS631 Assignment 3 Report (`report/20266480_ThonnierVirgile_assignment3.pdf`)](report/20266480_ThonnierVirgile_assignment3.pdf) · [Hugging Face Artifacts](https://huggingface.co/datasets/vthonnier/is631-silent-zombies-artifacts)
 
-To close this systems gap, we implement and evaluate an authenticated OS-level POSIX `/dev/shm` shared-memory tensor bus (`SharedMemoryTensorBus`) paired with an active edge reference monitor (`EdgeTensorReferenceMonitor`) across **AgentDojo**, **Microsoft TAMAS**, and **LatentMAS** reasoning benchmarks.
+</div>
+
+---
+
+## Live Attack & OS Edge Defense Overview
+
+<div align="center">
+  <img src="docs/assets/silent_zombies_demo.gif" alt="Silent Zombies: Live PGD Loss Convergence, Latent KV Attack, and /dev/shm Edge Monitor Quarantine" width="100%"/>
+</div>
+
+> **What you are seeing above (driven by verified `M3`, `M8`, and `M11` experimental traces):**
+> 1. **Act 1 — Clean Latent Handoff:** The Planner encodes the benign user task into a KV cache (`Target send_email NLL = 118.4`) over `/dev/shm`; the downstream Executor runs the intended `get_day_calendar_events()` tool (`0.0%` unauthorized ASR).
+> 2. **Act 2 — Undefended Silent Zombie PGD (`Steps 0 -> 120`):** A single compromised Planner optimizes a continuous perturbation $\Delta$ on outgoing KV layers `{20, 24, 28, 32}` (`NLL: 118.4 -> 0.005` in ~40 steps) while emitting **zero malicious tokens**. Both surface text monitors (`0.0%`) and own-activation probes ([AcMAS](https://arxiv.org/abs/2607.06807), `0.0%`) remain blind while the Executor flips to an unauthorized `send_email(...)` call (**`75.0%` AgentDojo / `100.0%` TAMAS ASR**).
+> 3. **Act 3 — Active OS `/dev/shm` Defense:** Enabling `SharedMemoryTensorBus` (HMAC-SHA256) + `EdgeTensorReferenceMonitor` (`d_cos <= 0.01`, norm-ratio `<= 1.08`, spectral gate) quarantines the poisoned KV handoff *before* downstream attention and routes to clean fallback—restoring exact benign baseline behavior (**`100.0%` TAMAS & LatentMAS TPR**).
+
+---
+
+## Core Findings at a Glance
+
+- **Continuous KV Tensors Amplify Hijacking & Blind Legacy Monitors (`M3`, `M6`, `M7`, `M11`):** Under an *inference-time, victim-unmodified* threat model (frozen weights $\theta$, untouched prompts/tools), full-space KV PGD drives **`75.0%` ASR** across 24 AgentDojo pairs (vs. `4.2%` for text injections caught at `83%–100%`) and **`100.0%` ASR** across 20 Microsoft TAMAS workflows across 5 domains—at **`0.0%` text-monitor catch**.
+- **Full-Space KV Dominates 1D Steering & Discrete GCG (`M9`, `M11`):** Matched white-box evaluation shows full-space KV PGD reaches **`62.5%` ASR** (`NLL = 0.029`, `64.7s`), outperforming white-box discrete text GCG (`37.5%` ASR, `116.4s`, `75.0%` caught by PPL/text filters) and 1D *Out-of-Sight* steering (`0.0%` tool & exact-answer hijack ASR).
+- **Text Conversation Points Are Causal Firewalls; Pure-Latent Chains Have Unbounded Reach (`M4d`, `M9`, `M10`):** Inserting even **one** text decode/re-encode boundary in a 3-agent pipeline collapses ASR from **`62.5%` to `0.0%`**. Removing intermediate decodes in a pure-latent chain yields **`100.0%` reach across depths `2..6`** with non-vanishing gradients (`2.45–3.23`), and a **16-slot Universal KV Prefix Patch** transfers **zero-shot (`0` test steps) to `81.2%` of unseen tasks**.
+- **Authenticated `/dev/shm` Bus + Edge Gating vs. Adaptive Dual Evasion (`M8`, `M12`):** While `EdgeTensorReferenceMonitor` catches `100.0%` of non-adaptive TAMAS/LatentMAS attacks, an adaptive dual-evasion attacker (`lambda_edge = 2500`) can compress statistical edge distance $10.8\times$ (`0.0111 -> 0.0010`), motivating cryptographic binding (`10/10` tamper rejection via HMAC-SHA256 on Linux `/dev/shm`, exposing a `134–152 MB/s` software hashing bottleneck). Conversely, all 6 **black-box / surrogate regimes (`M12`) score `0.0%` ASR**, establishing weight & KV-schema confidentiality as a sharp security boundary.
 
 ---
 
@@ -18,20 +41,24 @@ To close this systems gap, we implement and evaluate an authenticated OS-level P
 
 ```mermaid
 flowchart LR
-    U[Benign User Task] --> Z[Compromised Planner / Zombie Node]
-    Z -->|"Latent KV Handoff H + Delta<br/>(PGD / Universal Patch / Dual-Evasion)"| SHM["POSIX /dev/shm Tensor Bus<br/>(Zero-Copy mmap + HMAC-SHA256)"]
-    SHM --> MON{"EdgeTensorReferenceMonitor<br/>1. HMAC-SHA256 Tag<br/>2. Cosine Distance <= 0.01<br/>3. Norm Ratio <= 1.08 & Spectral Gate"}
-    MON -->|"Pass"| EXEC[Downstream Agent / Tool Executor]
-    MON -->|"Reject / Tamper Fault"| SAFE["Safe Fallback (Clean Context)"]
+    U[Benign User Task] --> Z["Compromised Planner v_c<br/>(Frozen Weights, 0 Malicious Text)"]
+    Z -->|"Latent KV Handoff H + Delta<br/>(PGD / 16-Slot Prefix Patch / Dual-Evasion)"| SHM["POSIX /dev/shm Tensor Bus<br/>(Zero-Copy mmap + HMAC-SHA256)"]
+    TXT["Text / PPL Monitor<br/>(0.0% Catch - Blind on Wire)"] -.->|"No text"| SHM
+    SHM --> MON{"EdgeTensorReferenceMonitor<br/>1. HMAC-SHA256 Integrity<br/>2. Cosine Dist <= 0.01<br/>3. Norm <= 1.08 & Spectral Gate"}
+    MON -->|"Verified / Pass"| EXEC["Downstream Executor v_j<br/>(ReAct Tool Loop)"]
+    MON -->|"Tamper / Anomaly Flag"| SAFE["Safe Clean Fallback<br/>(Quarantine Poisoned KV)"]
     SAFE --> EXEC
-    EXEC --> ENV["Sandboxed Environment Checks<br/>(AgentDojo / TAMAS / LatentMAS)"]
+    EXEC -.->|"h_j (Evaded at lambda>=1)"| ACMAS["AcMAS Activation Probe"]
+    EXEC --> ENV["Sandboxed Benchmarks<br/>(AgentDojo / TAMAS / LatentMAS)"]
 ```
+
+*(Vector LaTeX/TikZ topological diagrams of both the `/dev/shm` interposition architecture and the 4 evaluated multi-agent graph topologies are included directly in [`paper/paper.pdf`](paper/paper.pdf) and [`report/20266480_ThonnierVirgile_assignment3.pdf`](report/20266480_ThonnierVirgile_assignment3.pdf).)*
 
 ---
 
-## Key Empirical Results (`paper/results/*.json`)
+## Verified Empirical Results (`paper/results/*.json`)
 
-All reported metrics come directly from verified experimental runs on Ubuntu 24.04.4 LTS (Linux kernel `6.6.159+`, NVIDIA Tesla T4 14.56 GB, `Qwen/Qwen2.5-3B-Instruct` 4-bit NF4).
+All primary metrics come directly from verified runs on **Ubuntu 24.04.4 LTS** (Linux kernel `6.6.159+`, NVIDIA Tesla T4 `14.56 GB`, `Qwen/Qwen2.5-3B-Instruct` 4-bit NF4, hardware `float16` compute).
 
 | Suite / Experiment | Condition | Primary Result | Text Monitor Catch | AcMAS / Edge Catch |
 |---|---|---:|---:|---:|
@@ -48,7 +75,7 @@ All reported metrics come directly from verified experimental runs on Ubuntu 24.
 
 ---
 
-## Visual Summary
+## Publication Figures Gallery
 
 | White-Box Expressivity & Conversation Points (`M9`) | Single-Edge PGD Convergence (`M3`) |
 |---|---|
@@ -62,7 +89,9 @@ All reported metrics come directly from verified experimental runs on Ubuntu 24.
 |---|---|
 | ![M4d Reach and M8 Dual Evasion](paper/figures/fig5_reach_and_stealth.png) | ![M8 SHM Bus Latency](paper/figures/fig6_shm_bus_latency.png) |
 
-![M12 Black-Box Security Boundary](paper/figures/fig7_blackbox.png)
+<div align="center">
+  <img src="paper/figures/fig7_blackbox.png" alt="M12 Black-Box Security Boundary" width="78%"/>
+</div>
 
 ---
 
@@ -70,24 +99,28 @@ All reported metrics come directly from verified experimental runs on Ubuntu 24.
 
 ```text
 .
-|-- latent_mas_attack/          # Core attack, defense, IPC, and benchmark runtime
+|-- latent_mas_attack/          # Core attack, defense, POSIX IPC, and benchmark runtime
 |   |-- lmas/
-|   |   |-- ipc/                # POSIX /dev/shm zero-copy + HMAC-SHA256 tensor bus
-|   |   |-- detectors/          # Text/PPL monitor, AcMAS probe, EdgeTensorReferenceMonitor
-|   |   |-- attacks/            # PGD, GCG, 1D subspace, universal patch, dual evasion, C2C
-|   |   `-- benchmarks/         # AgentDojo, Microsoft TAMAS, LatentMAS harnesses
-|   `-- run_m3..m12*.py         # Experiment drivers
+|   |   |-- bus/                # shm_bus.py (/dev/shm + HMAC-SHA256) & edge_monitor.py
+|   |   |-- detectors/          # text_monitor.py (lexical + PPL) & acmas.py probe
+|   |   |-- attacks/            # pgd.py, stealth.py, search.py, objectives.py, grpo.py
+|   |   `-- graph/              # topology.py & executor.py multi-agent DAG/chain runners
+|   `-- run_m3..m12*.py         # Modular milestone drivers (AgentDojo, TAMAS, LatentMAS, C2C)
+|-- docs/
+|   `-- assets/                 # Animated README demo GIF & static preview frame
 |-- paper/
-|   |-- paper.tex / paper.pdf   # Full venue-style research paper
+|   |-- paper.tex / paper.pdf   # Full venue-style paper (with TikZ topological graphs)
 |   |-- figures/                # Vector PDF + 300-DPI PNG figures (fig1..fig7)
 |   `-- results/                # Verified M3..M12 JSON outputs + env_info.json
 |-- report/
-|   `-- 20266480_ThonnierVirgile_assignment3.pdf  # KAIST IS631 Assignment 3 Report
+|   |-- assignment3_report.tex  # LaTeX source for KAIST IS631 Assignment 3 Report
+|   `-- 20266480_ThonnierVirgile_assignment3.pdf
 |-- scripts/
-|   |-- run_colab_suite.py      # Resumable Drive-backed GPU orchestrator
-|   |-- generate_figures.py     # Figure generator reading paper/results/*.json
-|   `-- build_submission_zip.py # Builds clean reproducible submission archive
-|-- tests/                      # 14 CPU unit tests (IPC, monitors, C2C, parsing)
+|   |-- run_colab_suite.py          # Resumable Drive-backed GPU orchestrator
+|   |-- generate_figures.py         # Regenerates fig1..fig7 from paper/results/*.json
+|   |-- generate_hero_animation.py  # Regenerates docs/assets/silent_zombies_demo.gif
+|   `-- build_submission_zip.py     # Builds KLMS deliverable archive
+|-- tests/                      # 14 CPU unit tests (/dev/shm HMAC, EdgeMonitor, C2C, NES)
 `-- notebooks/IS631_Assignment3_Colab.ipynb
 ```
 
@@ -100,11 +133,12 @@ All reported metrics come directly from verified experimental runs on Ubuntu 24.
 pip install -r requirements.txt
 pytest -v
 ```
-Expected: `14 passed` verifying `/dev/shm` serialization + HMAC tamper detection, `EdgeTensorReferenceMonitor` calibration/gating, C2C ridge projection, subspace NES scaling, and answer parsing.
+Expected: `14 passed` verifying `/dev/shm` serialization + HMAC tamper detection, `EdgeTensorReferenceMonitor` calibration/gating, C2C ridge projection, subspace NES scaling, and benchmark parsing.
 
-### 2. Regenerate All Publication Figures
+### 2. Regenerate All Figures & Live Animation
 ```bash
 python scripts/generate_figures.py
+python scripts/generate_hero_animation.py
 ```
 
 ### 3. Run GPU Experiments (`Qwen/Qwen2.5-3B-Instruct`, 4-bit NF4, ~15 GB VRAM)
@@ -112,7 +146,7 @@ python scripts/generate_figures.py
 # Headless full suite (resumable per-milestone JSON checkpoints):
 python scripts/run_colab_suite.py --out-dir paper/results
 
-# Or launch the Colab workflow:
+# Or open the thin Colab notebook wrapper:
 # notebooks/IS631_Assignment3_Colab.ipynb
 ```
 

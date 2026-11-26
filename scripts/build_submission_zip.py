@@ -16,7 +16,7 @@ ZIP_NAME = "20266480_ThonnierVirgile_assignment3.zip"
 REPORT_PDF = ROOT / "report" / "20266480_ThonnierVirgile_assignment3.pdf"
 PAPER_PDF = ROOT / "paper" / "paper.pdf"
 
-INCLUDE_TOP_DIRS = ["latent_mas_attack", "tests", "scripts", "notebooks", "paper"]
+INCLUDE_TOP_DIRS = ["latent_mas_attack", "tests", "scripts", "notebooks", "paper", "report", "docs/assets"]
 INCLUDE_TOP_FILES = ["README.md", "LICENSE", "pyproject.toml", "requirements.txt"]
 EXCLUDE_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "submission", "remote_backup"}
 
