@@ -15,16 +15,15 @@
 
 ---
 
-## Live Attack & OS Edge Defense Overview
+## Live Demonstration: Pure-Latent Chain vs. Single Text Layer During PGD Training
 
 <div align="center">
-  <img src="docs/assets/silent_zombies_demo.gif" alt="Silent Zombies: Live PGD Loss Convergence, Latent KV Attack, and /dev/shm Edge Monitor Quarantine" width="100%"/>
+  <img src="docs/assets/silent_zombies_demo.gif" alt="Silent Zombies: Pure-Latent (0 Text Layers) vs. 1 Text Layer Topology Evolving Across PGD Training Steps" width="100%"/>
 </div>
 
-> **What you are seeing above (driven by verified `M3`, `M8`, and `M11` experimental traces):**
-> 1. **Act 1 — Clean Latent Handoff:** The Planner encodes the benign user task into a KV cache (`Target send_email NLL = 118.4`) over `/dev/shm`; the downstream Executor runs the intended `get_day_calendar_events()` tool (`0.0%` unauthorized ASR).
-> 2. **Act 2 — Undefended Silent Zombie PGD (`Steps 0 -> 120`):** A single compromised Planner optimizes a continuous perturbation $\Delta$ on outgoing KV layers `{20, 24, 28, 32}` (`NLL: 118.4 -> 0.005` in ~40 steps) while emitting **zero malicious tokens**. Both surface text monitors (`0.0%`) and own-activation probes ([AcMAS](https://arxiv.org/abs/2607.06807), `0.0%`) remain blind while the Executor flips to an unauthorized `send_email(...)` call (**`75.0%` AgentDojo / `100.0%` TAMAS ASR**).
-> 3. **Act 3 — Active OS `/dev/shm` Defense:** Enabling `SharedMemoryTensorBus` (HMAC-SHA256) + `EdgeTensorReferenceMonitor` (`d_cos <= 0.01`, norm-ratio `<= 1.08`, spectral gate) quarantines the poisoned KV handoff *before* downstream attention and routes to clean fallback—restoring exact benign baseline behavior (**`100.0%` TAMAS & LatentMAS TPR**).
+> **What this animation shows (driven directly by verified `M3` & `M9` experimental curves):**
+> - **Top Topology `(A)` — Pure-Latent Chain (`0` Text Layers):** Three circular agents (`v₁ -> v₂ -> v₃`) exchange continuous KV-cache tensors directly (live `[K, V]` heatmaps above each edge). Because no discrete decoding occurs in between, gradients $\nabla_\Delta \mathcal{L}$ flow backward end-to-end (`v₃ -> v₂ -> v₁`). Over `120` PGD steps, target `send_email` loss plunges from **`118.4` to `0.005`**, the structured perturbation propagates intact across `v₂ -> v₃`, and `v₃` flips from benign `get_day_calendar_events(...)` to unauthorized `send_email(...)` (**`62.5%–75.0%` ASR, `0.0%` Text Catch**).
+> - **Bottom Topology `(B)` — Hybrid Pipeline (`1` Text Layer):** The exact same perturbation $H_1 + \Delta$ enters `v₂`, but edge `v₂ -> v₃` decodes to a **human-readable text message** (`"Check May 26 calendar events."`). That single discrete boundary severs $\nabla_\Delta \mathcal{L} = 0$ and washes out the continuous perturbation (or exposes any forced injection text to standard text monitors at `25%–75%` catch), keeping `v₃` locked on the safe benign call (**`0.0%` ASR**).
 
 ---
 
