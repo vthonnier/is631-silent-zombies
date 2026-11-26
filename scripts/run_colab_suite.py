@@ -38,6 +38,8 @@ def capture_env_info(out_dir: Path) -> dict:
         if torch.cuda.is_available()
         else 0.0
     )
+    cap = list(torch.cuda.get_device_capability(0)) if torch.cuda.is_available() else [0, 0]
+    native_bf16 = bool(torch.cuda.is_available() and cap[0] >= 8)
     info = {
         "ok": True,
         "system": uname.system,
@@ -54,6 +56,9 @@ def capture_env_info(out_dir: Path) -> dict:
         "agentdojo_version": getattr(agentdojo, "__version__", "0.1.35"),
         "gpu_name": gpu_name,
         "gpu_vram_gb": gpu_vram_gb,
+        "gpu_compute_capability": cap,
+        "native_bf16": native_bf16,
+        "compute_dtype": "bfloat16" if native_bf16 else "float16",
         "dev_shm_exists": os.path.exists("/dev/shm"),
     }
     (out_dir / "env_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
@@ -98,11 +103,13 @@ def main() -> None:
     victim_id = "Qwen/Qwen2.5-3B-Instruct"
     vpath = resolve_model_path(victim_id)
     tok = AutoTokenizer.from_pretrained(vpath)
+    native_bf16 = bool(torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8)
+    compute_dtype = torch.bfloat16 if native_bf16 else torch.float16
     bnb = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_compute_dtype=compute_dtype,
     )
 
     from run_m3_pgd import run_m3_with_model
@@ -165,7 +172,7 @@ def main() -> None:
         print("\n==================== NF4 PHASE (ALL STAGES ALREADY DONE) ====================", flush=True)
 
     need_m10_bf16 = not _json_done(
-        out_dir / "m10_transferability.json", lambda d: "cross_precision_bf16" in d
+        out_dir / "m10_transferability.json", lambda d: len(d.get("cross_precision_bf16", [])) > 0
     )
     need_m12_bridge = not _json_done(
         out_dir / "m12_blackbox.json", lambda d: "BB3_surrogate_transfer" in d
@@ -186,11 +193,11 @@ def main() -> None:
     else:
         print("\n==================== M12-Surrogate-1.5B (SKIPPED - ALREADY DONE) ====================", flush=True)
 
-    # 4. Load Unquantized bfloat16 Qwen2.5-3B-Instruct ONCE for M10-bf16 + M12-Surrogate-Transfer
+    # 4. Load Unquantized 16-bit Qwen2.5-3B-Instruct ONCE for M10-bf16 + M12-Surrogate-Transfer
     if need_m10_bf16 or need_m12_bridge:
-        print("\n==================== M10-bf16 + M12-Bridge ====================", flush=True)
+        print(f"\n==================== M10-16bit ({compute_dtype}) + M12-Bridge ====================", flush=True)
         model_bf16 = AutoModelForCausalLM.from_pretrained(
-            vpath, torch_dtype=torch.bfloat16, device_map={"": 0}, attn_implementation="sdpa"
+            vpath, torch_dtype=compute_dtype, device_map={"": 0}, attn_implementation="sdpa"
         ).eval()
         if need_m10_bf16:
             eval_cross_precision_bf16(model_bf16, tok)

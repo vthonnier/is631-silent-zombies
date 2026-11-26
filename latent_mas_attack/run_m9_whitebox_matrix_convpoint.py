@@ -368,7 +368,7 @@ def run_m9_with_model(model, tok) -> dict:
                 nll = -logp[torch.arange(tlen, device=dev), tids[0]].sum()
                 nll.backward()
                 grad = one_hot.grad[0]  # (S, V)
-                scores = -(grad @ embed_weight.T)  # (S, V) higher = better
+                scores = -grad.float()  # (S, V) higher = better
                 scores[:, ~allowed_mask] = -1e9
                 top_vals = scores.topk(GCG_TOPK, dim=-1).indices  # (S, K)
                 del o, sl, logp, full_emb, suf_emb, one_hot
@@ -450,7 +450,7 @@ def run_m9_with_model(model, tok) -> dict:
                 nll = -logp[torch.arange(tlen, device=dev), tids[0]].sum()
                 nll.backward()
                 grad = one_hot.grad[0]
-                scores = -(grad @ embed_weight.T)
+                scores = -grad.float()
                 scores[:, ~allowed_mask] = -1e9
                 top_vals = scores.topk(GCG_TOPK, dim=-1).indices
                 del zo, eo, sl, logp, z_emb, suf_emb, one_hot

@@ -40,9 +40,9 @@ SURROGATE_LAYERS = [15, 18, 21, 25]
 RHO = 8.0
 PATCH_LEN = 16
 SUBSPACE_DIM = 16
-NES_STEPS = 30
-NES_POP = 8        # 8 antithetic pairs = 16 evals/step -> 480 or 15*16=240 queries
-DECISION_BUDGET = 40
+NES_STEPS = 20
+NES_POP = 6        # 6 antithetic pairs = 12 evals/step -> 240 queries
+DECISION_BUDGET = 25
 MAX_STEPS, MAX_NEW = 4, 140
 N_INJ = 3
 N_USER = 2
@@ -416,13 +416,15 @@ def _run_blackbox_queries_with_victim(model, tok) -> dict:
             # BB-1: Score-Based Zeroth-Order Subspace-NES (no_grad!)
             t0 = time.perf_counter()
             r_dim = basis[VICTIM_LAYERS[0]].shape[0]
+            scale = {l: max(float(K_clean[l].float().norm()), 1.0) for l in VICTIM_LAYERS}
             alphas = {l: torch.zeros(r_dim, dtype=torch.float32, device=dev) for l in VICTIM_LAYERS}
-            # Initialize along top contrastive direction
             for l in VICTIM_LAYERS:
-                alphas[l][0] = float(K_clean[l].float().norm()) * 0.8
-            sigma, lr_nes = 0.35, 0.65
-            n_q_nes = 0
-            best_nes_lp = -1e9
+                alphas[l][0] = 1.0 * scale[l]
+            sigma_l = {l: 0.25 * scale[l] for l in VICTIM_LAYERS}
+            lr_l = {l: 0.45 * scale[l] for l in VICTIM_LAYERS}
+            dk0, dv0 = unpack_vec(K_clean, V_clean, basis, alphas)
+            best_nes_lp = score_target_logp(K_clean, V_clean, dk0, dv0, eids, tids)
+            n_q_nes = 1
             best_alphas = {l: a.clone() for l, a in alphas.items()}
             for _step in range(NES_STEPS):
                 grads = {l: torch.zeros_like(alphas[l]) for l in VICTIM_LAYERS}
@@ -430,8 +432,8 @@ def _run_blackbox_queries_with_victim(model, tok) -> dict:
                 for _p in range(NES_POP):
                     eps = {l: torch.randn_like(alphas[l]) for l in VICTIM_LAYERS}
                     eps_list.append(eps)
-                    ap = {l: alphas[l] + sigma * eps[l] for l in VICTIM_LAYERS}
-                    am = {l: alphas[l] - sigma * eps[l] for l in VICTIM_LAYERS}
+                    ap = {l: alphas[l] + sigma_l[l] * eps[l] for l in VICTIM_LAYERS}
+                    am = {l: alphas[l] - sigma_l[l] * eps[l] for l in VICTIM_LAYERS}
                     dkp, dvp = unpack_vec(K_clean, V_clean, basis, ap)
                     dkm, dvm = unpack_vec(K_clean, V_clean, basis, am)
                     lp_p = score_target_logp(K_clean, V_clean, dkp, dvp, eids, tids)
@@ -448,11 +450,11 @@ def _run_blackbox_queries_with_victim(model, tok) -> dict:
                 all_r = torch.tensor(rewards_plus + rewards_minus, dtype=torch.float32)
                 std_r = float(all_r.std().item()) + 1e-6
                 for idx_p, eps in enumerate(eps_list):
-                    adv = (rewards_plus[idx_p] - rewards_minus[idx_p]) / (2.0 * sigma * std_r)
+                    adv = (rewards_plus[idx_p] - rewards_minus[idx_p]) / (2.0 * std_r)
                     for l in VICTIM_LAYERS:
                         grads[l] += adv * eps[l]
                 for l in VICTIM_LAYERS:
-                    alphas[l] = alphas[l] + (lr_nes / NES_POP) * grads[l]
+                    alphas[l] = alphas[l] + (lr_l[l] / NES_POP) * grads[l]
             dK_nes, dV_nes = unpack_vec(K_clean, V_clean, basis, best_alphas)
             bb1_sec = round(time.perf_counter() - t0, 2)
             bb1_res = run_exec(ut, it, specs, rt, K_clean, V_clean, dK_nes, dV_nes)

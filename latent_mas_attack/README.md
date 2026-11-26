@@ -1,38 +1,42 @@
 # latent_mas_attack
 
-Inference-time, training-free attack from one compromised ("zombie") node in a
-latent multi-agent system. A single node writes its outgoing KV handoff to
-(1) **jailbreak / exfiltrate** through downstream agents, (2) **propagate** a
-measurable distance through the topology, and (3) stay **invisible** to
-text-only monitors and to an activation detector (AcMAS). See the paper draft
-in `../paper_introduction.md`.
+Inference-time, victim-unmodified attack and defense testbed from one
+compromised ("zombie") node in a latent multi-agent system. A single node writes
+its outgoing KV handoff (optionally routed over POSIX `/dev/shm` with
+HMAC-SHA256 integrity tags) to (1) trigger unauthorized tool actions across
+**AgentDojo** (`M3`, `M6`, `M7`, `M9`), **Microsoft TAMAS**, and **LatentMAS**
+(`M11`), (2) measure multi-hop reach (`M4`–`M4d`), zero-shot transfer (`M10`),
+and black-box boundaries (`M12`), and (3) benchmark text monitors, AcMAS
+activation probes, and active edge tensor reference monitors (`M5`, `M8`).
 
 ## Install
 ```bash
-pip install -r requirements.txt   # needs a CUDA GPU for Qwen3-4B
+pip install -r ../requirements.txt   # CUDA GPU recommended for Qwen2.5-3B-Instruct (4-bit NF4)
 ```
 
 ## Layout
 ```
 lmas/
-  config.py        typed config; one Config fully describes a run
-  models.py        load the backbone once (Backbone)
-  handoff.py       the latent channel: LatentHandoff + capture/inject
-  agent.py         one agent = backbone + role; act() runs it
-  pipeline.py      Planner->Critic->Refiner->Judger + the single attack hook
+  config.py          typed config; one Config fully describes a run
+  models.py          load the backbone once (Backbone)
+  handoff.py         the latent channel: LatentHandoff + capture/inject
+  agent.py           one agent = backbone + role; act() runs it
+  pipeline.py        Planner->Critic->Refiner->Judger + attack hook
+  ipc/               POSIX /dev/shm zero-copy mmap + HMAC-SHA256 tensor bus
   attacks/
-    objectives.py  jailbreak (refusal-suppression) + target-sequence losses
-    pgd.py         PGD on the handoff -> an Attacker callback
-    stealth.py     norm-ball projection + AcMAS-distance penalty
-    search.py      Bayesian site selection (carrier, layer, strength)
+    objectives.py    target-sequence and refusal-suppression losses
+    pgd.py           full-space KV PGD on the handoff
+    gcg_text.py      white-box discrete GCG text baseline
+    universal_patch.py 16-slot KV prefix patch & 1-slot broadcast delta
+    stealth.py       norm-ball projection + AcMAS/edge dual-evasion penalties
+    blackbox_subspace.py ES, SVD subspace NES, decision-only search
+    c2c_bridge.py    ridge-aligned Cache-to-Cache surrogate transfer (1.5B->3B)
   detectors/
-    acmas.py       activation detector (the baseline to evade)
-    text_monitor.py  text-channel monitor
-  data/prompts.py  benign tasks, secrets, safe jailbreak stand-ins
-  metrics.py       ASR, exfil recovery, accuracy, reach curve
-  experiment.py    Harness: builds everything, runs one attacked query
-experiments/       e0..e3 runnable scripts
-configs/default.yaml
+    edge_monitor.py  active edge tensor reference monitor (cosine/norm/spectral)
+    acmas.py         own-activation detector baseline
+    text_monitor.py  text-channel / perplexity monitor
+  benchmarks/        AgentDojo, TAMAS, and LatentMAS evaluation wrappers
+run_m3_pgd.py .. run_m12_blackbox.py   experiment drivers
 ```
 
 ## Data flow (one attacked run)

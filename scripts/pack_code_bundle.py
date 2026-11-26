@@ -20,8 +20,36 @@ def pack_bundle() -> Path:
         ROOT / "pyproject.toml",
         ROOT / "requirements.txt",
         ROOT / "scripts" / "run_colab_suite.py",
-        ROOT / "paper" / "results" / "m3_pgd.json",
     ]
+    res_dir = ROOT / "paper" / "results"
+    candidate_jsons = [
+        "m3_pgd.json",
+        "m4d_purelatent.json",
+        "m6_benchmark.json",
+        "m7_text_baseline.json",
+        "m8_shm_edge_defense.json",
+        "m9_whitebox_convpoint.json",
+        "m10_transferability.json",
+        "m11_mas_benchmarks.json",
+        "m12_blackbox.json",
+    ]
+    for fn in candidate_jsons:
+        p = res_dir / fn
+        if not p.exists():
+            continue
+        if fn == "m3_pgd.json":
+            include_paths.append(p)
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if data.get("ok") is not True:
+            continue
+        if fn in ("m6_benchmark.json", "m7_text_baseline.json") and data.get("n_pairs", 0) < 24:
+            continue
+        include_paths.append(p)
+
     for d in ("latent_mas_attack", "tests"):
         for p in sorted((ROOT / d).rglob("*")):
             if p.is_file() and not any(part in EXCLUDE for part in p.parts):

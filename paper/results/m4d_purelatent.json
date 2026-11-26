@@ -16,85 +16,194 @@
   "depths": {
     "2": {
       "target_role": "refiner",
-      "n": 2,
+      "n": 3,
       "purelatent_reach": 1.0,
       "purelatent_logp": [
+        -0.0,
         -0.0,
         -0.0
       ],
       "reward_hist": [
         [
-          -30.734,
-          -5.829,
-          -0.127,
+          -30.909,
+          -6.059,
+          -0.135,
           -0.004,
           -0.001,
           -0.0
         ],
         [
-          -29.051,
-          -6.575,
-          -0.106,
+          -28.993,
+          -6.493,
+          -0.093,
           -0.005,
           -0.001,
           -0.0
+        ],
+        [
+          -30.358,
+          -7.11,
+          -0.06,
+          -0.004,
+          -0.001,
+          -0.0
         ]
-      ]
+      ],
+      "grad_norm_init_mean": 2.8979,
+      "grad_norm_final_mean": 0.0013
     },
     "3": {
       "target_role": "worker",
-      "n": 2,
+      "n": 3,
       "purelatent_reach": 1.0,
       "purelatent_logp": [
+        -0.0,
+        -0.001,
+        -0.001
+      ],
+      "reward_hist": [
+        [
+          -34.919,
+          -8.445,
+          -0.248,
+          -0.008,
+          -0.001,
+          -0.0
+        ],
+        [
+          -31.202,
+          -6.321,
+          -0.075,
+          -0.009,
+          -0.003,
+          -0.001
+        ],
+        [
+          -32.819,
+          -7.552,
+          -0.116,
+          -0.008,
+          -0.002,
+          -0.001
+        ]
+      ],
+      "grad_norm_init_mean": 3.2278,
+      "grad_norm_final_mean": 0.0021
+    },
+    "4": {
+      "target_role": "critic",
+      "n": 3,
+      "purelatent_reach": 1.0,
+      "purelatent_logp": [
+        -0.001,
         -0.0,
         -0.001
       ],
       "reward_hist": [
         [
-          -34.838,
-          -8.367,
-          -0.247,
-          -0.007,
+          -32.252,
+          -8.764,
+          -0.348,
+          -0.013,
+          -0.002,
+          -0.001
+        ],
+        [
+          -26.744,
+          -4.032,
+          -0.047,
+          -0.009,
+          -0.002,
+          -0.0
+        ],
+        [
+          -29.622,
+          -5.303,
+          -0.045,
+          -0.008,
+          -0.003,
+          -0.001
+        ]
+      ],
+      "grad_norm_init_mean": 2.4511,
+      "grad_norm_final_mean": 0.0017
+    },
+    "5": {
+      "target_role": "refiner",
+      "n": 3,
+      "purelatent_reach": 1.0,
+      "purelatent_logp": [
+        -0.002,
+        -0.0,
+        -0.001
+      ],
+      "reward_hist": [
+        [
+          -34.487,
+          -9.141,
+          -0.286,
+          -0.011,
+          -0.003,
+          -0.002
+        ],
+        [
+          -28.442,
+          -5.554,
+          -0.051,
+          -0.005,
           -0.001,
           -0.0
         ],
         [
-          -31.339,
-          -6.331,
-          -0.071,
-          -0.009,
-          -0.003,
+          -31.202,
+          -6.861,
+          -0.054,
+          -0.01,
+          -0.002,
           -0.001
         ]
-      ]
+      ],
+      "grad_norm_init_mean": 2.6077,
+      "grad_norm_final_mean": 0.0023
     },
-    "4": {
+    "6": {
       "target_role": "judger",
-      "n": 2,
+      "n": 3,
       "purelatent_reach": 1.0,
       "purelatent_logp": [
         -0.001,
+        -0.0,
         -0.0
       ],
       "reward_hist": [
         [
-          -33.699,
-          -8.382,
-          -0.243,
-          -0.005,
-          -0.001,
+          -33.111,
+          -9.948,
+          -0.237,
+          -0.011,
+          -0.003,
           -0.001
         ],
         [
-          -26.478,
-          -4.074,
-          -0.101,
-          -0.005,
+          -26.046,
+          -5.195,
+          -0.109,
+          -0.004,
+          -0.001,
+          -0.0
+        ],
+        [
+          -29.869,
+          -7.61,
+          -0.125,
+          -0.009,
           -0.001,
           -0.0
         ]
-      ]
+      ],
+      "grad_norm_init_mean": 2.4959,
+      "grad_norm_final_mean": 0.0017
     }
   },
-  "note": "Compare to text-mediated chain (run_m4b, rho=8): reach ~1.0 at hops 1-2, ~0.33 at hops 3+. Pure-latent uses latent-reasoning intermediates (no decode); only the target decodes."
+  "note": "Pure-latent differentiable chain across depths 2..6 (n=3) with per-depth gradient-norm logging; contrasts against text-mediated decoding bottleneck."
 }

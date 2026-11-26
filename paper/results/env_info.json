@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "system": "Linux",
+  "node": "ecd20033652a",
+  "kernel_release": "6.6.159+",
+  "kernel_version": "#1 SMP Thu Oct 22 03:07:54 UTC 2026",
+  "machine": "x86_64",
+  "os_release": "PRETTY_NAME=\"Ubuntu 24.04.4 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.4 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+  "python_version": "3.13.16",
+  "torch_version": "2.14.1+cu130",
+  "cuda_version": "13.0",
+  "transformers_version": "4.53.3",
+  "bitsandbytes_version": "0.50.2",
+  "agentdojo_version": "0.1.35",
+  "gpu_name": "Tesla T4",
+  "gpu_vram_gb": 14.56,
+  "gpu_compute_capability": [
+    7,
+    5
+  ],
+  "native_bf16": false,
+  "compute_dtype": "float16",
+  "dev_shm_exists": true
+}

@@ -116,10 +116,10 @@ def fig2_m3_nll_convergence() -> None:
         return
     steps_120 = [0, 15, 30, 45, 60, 75, 90, 105, 119]
     styles = {
-        "late4_n8": ("Late Block {30..33}, rho=8", "#1f77b4", "o"),
-        "spread4_n8": ("Spread {20,24,28,32}, rho=8", "#ff7f0e", "s"),
-        "spread4_n16": ("Spread {20,24,28,32}, rho=16", "#2ca02c", "^"),
-        "deep6_n16": ("Deep6 {12,16,20,24,28,32}, rho=16", "#d62728", "D"),
+        "late4_n8": (r"Late Block {30..33}, $\rho=8$", "#1f77b4", "o"),
+        "spread4_n8": (r"Spread {20,24,28,32}, $\rho=8$", "#ff7f0e", "s"),
+        "spread4_n16": (r"Spread {20,24,28,32}, $\rho=16$", "#2ca02c", "^"),
+        "deep6_n16": (r"Deep6 {12,16,20,24,28,32}, $\rho=16$", "#d62728", "D"),
     }
     fig, ax = plt.subplots(figsize=(6.8, 4.0))
     for k, (label, col, mk) in styles.items():
@@ -146,43 +146,45 @@ def fig3_transferability() -> None:
     ct = s.get("cross_task", {})
     topo = s.get("cross_topology", {})
     sch = s.get("cross_schema", {})
-    bf16 = s.get("cross_precision_bf16", {})
 
     cats = [
-        "Cross-Task\n(Unseen Prompts)",
-        "Star\n(3 Workers)",
-        "3-Hop\nPure Latent",
-        "DAG\n(Dual Merge)",
-        "Schema &\nPrompt Shift",
-        "Precision\n(NF4 -> bf16)",
+        "Cross-Task\n(Unseen, n=16)",
+        "Star\n(3 Workers, n=6)",
+        "3-Hop\nPure Latent (n=6)",
+        "DAG\n(Single Patch, n=6)",
+        "Schema &\nPrompt Shift (n=6)",
     ]
     patch_vals = [
         ct.get("patch_asr", 0) * 100,
         topo.get("star_patch_asr", 0) * 100,
         topo.get("pure_latent_3agent_patch_asr", 0) * 100,
-        topo.get("reconvergent_dag_dual_patch_asr", 0) * 100,
+        topo.get("reconvergent_dag_single_patch_asr", 0) * 100,
         sch.get("patch_asr", 0) * 100,
-        bf16.get("patch_asr", 0) * 100,
     ]
+    bcast_idx = np.array([0, 1, 4])
     bcast_vals = [
         ct.get("broadcast_asr", 0) * 100,
         topo.get("star_broadcast_asr", 0) * 100,
-        0.0,
-        0.0,
         sch.get("broadcast_asr", 0) * 100,
-        bf16.get("broadcast_asr", 0) * 100,
     ]
 
-    fig, ax = plt.subplots(figsize=(9.5, 4.1))
+    fig, ax = plt.subplots(figsize=(9.2, 4.2))
     x = np.arange(len(cats))
-    w = 0.35
-    ax.bar(x - w / 2, patch_vals, width=w, label="Universal KV Prefix Patch (16 slots, 0 test steps)", color="#1f497d")
-    ax.bar(x + w / 2, bcast_vals, width=w, label="Universal Broadcast Delta (1 slot, 0 test steps)", color="#6baed6")
+    w = 0.34
+    patch_xs = np.array([0 - w / 2, 1 - w / 2, 2.0, 3.0, 4 - w / 2])
+    bcast_xs = bcast_idx + w / 2
+
+    bars_p = ax.bar(patch_xs, patch_vals, width=w, label="Universal KV Prefix Patch (16 slots, 0 test steps)", color="#1f497d")
+    bars_b = ax.bar(bcast_xs, bcast_vals, width=w, label="Universal Broadcast Delta (1 slot, 0 test steps)", color="#6baed6")
+    for b, v in zip(bars_p, patch_vals):
+        ax.text(b.get_x() + b.get_width() / 2, v + 2.0, f"{v:.1f}%", ha="center", fontsize=8.5, fontweight="bold")
+    for b, v in zip(bars_b, bcast_vals):
+        ax.text(b.get_x() + b.get_width() / 2, v + 2.0, f"{v:.1f}%", ha="center", fontsize=8.5)
     ax.set_xticks(x)
     ax.set_xticklabels(cats)
-    ax.set_ylim(0, 112)
+    ax.set_ylim(0, 118)
     ax.set_ylabel("Zero-Shot Transfer ASR (%)")
-    ax.set_title("M10: Zero-Shot Latent Attack Transfer Across Tasks, Topologies, Schemas, and Precision")
+    ax.set_title("M10: Zero-Shot Latent Attack Transfer Across Tasks, Topologies, and Schemas")
     ax.grid(axis="y", alpha=0.25)
     ax.legend(loc="upper right", frameon=True)
     fig.tight_layout()
@@ -194,9 +196,9 @@ def fig4_mas_benchmarks() -> None:
     m7 = _load("m7_text_baseline.json")
     m11 = _load("m11_mas_benchmarks.json")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.2, 4.2))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.4, 4.4))
 
-    # Left: TAMAS 5-domain ASR & ERS
+    # Left: TAMAS 5-domain ASR
     if m11 and "tamas" in m11 and m11["tamas"].get("by_domain"):
         by_dom = m11["tamas"]["by_domain"]
         doms = list(by_dom.keys())
@@ -210,11 +212,11 @@ def fig4_mas_benchmarks() -> None:
         ax1.bar(x + w, def_asr, width=w, label="Edge-Defended ASR", color="#1b9e77")
         ax1.set_xticks(x)
         ax1.set_xticklabels([d.capitalize() for d in doms])
-        ax1.set_ylim(0, 115)
+        ax1.set_ylim(0, 134)
         ax1.set_ylabel("Malicious Tool Execution ASR (%)")
         ax1.set_title("(a) Microsoft TAMAS 4-Agent MAS Across 5 Domains")
         ax1.grid(axis="y", alpha=0.25)
-        ax1.legend(loc="upper right", frameon=True)
+        ax1.legend(loc="upper center", ncol=3, frameon=True, fontsize=8)
 
     # Right: AgentDojo Multi-Suite Comparison (Clean vs Text vs Latent vs Edge-Defended)
     if m6 and m7 and "by_suite" in m6:
@@ -231,11 +233,11 @@ def fig4_mas_benchmarks() -> None:
         ax2.bar(x2 + 1.5 * w2, edge_tpr, width=w2, label="Edge Monitor TPR", color="#7570b3")
         ax2.set_xticks(x2)
         ax2.set_xticklabels([s.capitalize() for s in suites])
-        ax2.set_ylim(0, 115)
+        ax2.set_ylim(0, 134)
         ax2.set_ylabel("Rate (%)")
         ax2.set_title("(b) AgentDojo Multi-Suite Evaluation (24 Pairs)")
         ax2.grid(axis="y", alpha=0.25)
-        ax2.legend(loc="upper right", frameon=True)
+        ax2.legend(loc="upper center", ncol=2, frameon=True, fontsize=8)
 
     fig.tight_layout()
     _save(fig, "fig4_mas_benchmarks")
@@ -247,16 +249,16 @@ def fig5_reach_and_stealth() -> None:
     m5 = _load("m5_stealth.json")
     m8 = _load("m8_shm_edge_defense.json")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.2, 4.1))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.2, 4.2))
 
     # Left: Reach vs Depth
     if m4b and "reach_horizon" in m4b:
         rh = m4b["reach_horizon"]["8.0"]["reach_by_depth"]
-        ax1.plot(range(1, len(rh) + 1), [v * 100 for v in rh], "o--", color="#d95f02", linewidth=2, label="Text-Mediated Chain (rho=8)")
+        ax1.plot(range(1, len(rh) + 1), [v * 100 for v in rh], "o--", color="#d95f02", linewidth=2, label=r"Text-Mediated Chain ($\rho=8$)")
     if m4d and "depths" in m4d:
         ds = sorted(int(k) for k in m4d["depths"].keys())
         ys = [m4d["depths"][str(d)]["purelatent_reach"] * 100 for d in ds]
-        ax1.plot(ds, ys, "s-", color="#1f497d", linewidth=2.2, label="Pure-Latent Differentiable Chain (rho=8)")
+        ax1.plot(ds, ys, "s-", color="#1f497d", linewidth=2.2, label=r"Pure-Latent Differentiable Chain ($\rho=8$)")
     ax1.set_xlabel("Hop Distance from Compromised Zombie")
     ax1.set_ylabel("Target Control / Marker Rate (%)")
     ax1.set_ylim(-5, 112)
@@ -269,7 +271,7 @@ def fig5_reach_and_stealth() -> None:
         regs = m8["dual_evasion"]["regimes"]
         order = ["naive_pgd", "acmas_evasion_only", "dual_evasion_low", "dual_evasion_high", "dual_evasion_strict"]
         names = [k for k in order if k in regs]
-        lbls = ["Naive\nPGD", "AcMAS\nEvasion", "Dual\n(le=50)", "Dual\n(le=500)", "Dual\n(le=2500)"][: len(names)]
+        lbls = ["Naive\nPGD", "AcMAS\nEvasion", "Dual\n($\\lambda_e=50$)", "Dual\n($\\lambda_e=500$)", "Dual\n($\\lambda_e=2500$)"][: len(names)]
         asr = [regs[k]["injection_asr"] * 100 for k in names]
         ac_f = [regs[k]["acmas_flag_rate"] * 100 for k in names]
         ed_f = [regs[k]["edge_flag_rate"] * 100 for k in names]
@@ -280,11 +282,11 @@ def fig5_reach_and_stealth() -> None:
         ax2.bar(x + w, ed_f, width=w, label="Edge Monitor Flag (%)", color="#1b9e77")
         ax2.set_xticks(x)
         ax2.set_xticklabels(lbls)
-        ax2.set_ylim(0, 115)
+        ax2.set_ylim(0, 134)
         ax2.set_ylabel("Rate (%)")
         ax2.set_title("(b) Adaptive Stealth: Evading AcMAS vs. Edge Monitor")
         ax2.grid(axis="y", alpha=0.25)
-        ax2.legend(loc="upper right", frameon=True)
+        ax2.legend(loc="upper center", ncol=3, frameon=True, fontsize=8)
     elif m5 and "lambdas" in m5:
         ls = sorted(float(k) for k in m5["lambdas"].keys())
         inj = [m5["lambdas"][str(l)]["injection_rate"] * 100 for l in ls]
@@ -304,25 +306,118 @@ def fig6_shm_bus_latency() -> None:
     benches = m8["ipc_benchmark"].get("benchmarks", [])
     if not benches:
         return
-    lens = [str(b["seq_len"]) + f"\n({b['payload_mb']:.1f} MB)" for b in benches]
+    lens = [str(b["seq_len"]) + f"\n({b['payload_mb']:.2f} MB)" for b in benches]
     shm_ms = [b["shm_ms_mean"] for b in benches]
     ser_ms = [b["serialized_ms_mean"] for b in benches]
 
-    fig, ax = plt.subplots(figsize=(7.2, 4.0))
+    fig, ax = plt.subplots(figsize=(7.6, 4.2))
     x = np.arange(len(lens))
-    w = 0.35
+    w = 0.36
     ax.bar(x - w / 2, shm_ms, width=w, label="POSIX /dev/shm Zero-Copy + HMAC-SHA256", color="#1b9e77")
-    ax.bar(x + w / 2, ser_ms, width=w, label="Serialized Pickle/torch.save IPC Baseline", color="#7570b3")
+    ax.bar(x + w / 2, ser_ms, width=w, label="Unauthenticated Pickle/torch.save IPC Baseline", color="#7570b3")
+    ymax = max(shm_ms)
     for idx, b in enumerate(benches):
-        ax.text(idx - w / 2, shm_ms[idx] + max(ser_ms) * 0.02, f"{b['speedup_x']}x faster", ha="center", fontsize=8, fontweight="bold", color="#1b9e77")
+        bw_mbs = b["shm_bandwidth_gbps"] * 1000.0
+        ax.text(
+            idx - w / 2,
+            shm_ms[idx] + ymax * 0.025,
+            f"{b['shm_ms_mean']:.1f} ms\n({bw_mbs:.0f} MB/s)",
+            ha="center",
+            fontsize=8,
+            fontweight="bold",
+            color="#1b9e77",
+        )
+        ax.text(
+            idx + w / 2,
+            ser_ms[idx] + ymax * 0.025,
+            f"{b['serialized_ms_mean']:.1f} ms",
+            ha="center",
+            fontsize=8,
+            color="#4a468a",
+        )
     ax.set_xticks(x)
     ax.set_xticklabels(lens)
+    ax.set_ylim(0, ymax * 1.24)
     ax.set_ylabel("Round-Trip IPC Latency (ms)")
-    ax.set_title("M8: POSIX /dev/shm Tensor Bus vs. Serialized KV-Cache IPC (36 Layers, bf16)")
+    ax.set_title("M8: Authenticated /dev/shm Bus (HMAC-SHA256) vs. Unauthenticated Serialization (bf16)")
     ax.grid(axis="y", alpha=0.25)
     ax.legend(loc="upper left", frameon=True)
     fig.tight_layout()
     _save(fig, "fig6_shm_bus_latency")
+
+
+def fig7_blackbox() -> None:
+    m12 = _load("m12_blackbox.json")
+    if not m12 or "summary" not in m12:
+        return
+    s = m12["summary"]
+    m9 = _load("m9_whitebox_convpoint.json")
+    wb_pgd = m9.get("summary", {}).get("part_a_whitebox_matrix", {}).get("wb_fullspace_pgd_on_latent_comm", {})
+
+    labels = [
+        "BB-0\nFull ES",
+        "BB-1\nSubspace\nNES",
+        "BB-2\nDecision\nOnly",
+        "BB-3a\nUnaligned\n1.5B->3B",
+        "BB-3b\nC2C Bridge\n(0q)",
+        "BB-3b\nC2C +\nRefine",
+        "WB PGD\n(M9 Ref)",
+    ]
+    asrs = [
+        s["bb0_fullspace_es"]["asr"] * 100,
+        s["bb1_subspace_nes"]["asr"] * 100,
+        s["bb2_decision_only"]["asr"] * 100,
+        s["bb3a_unaligned_surrogate"]["asr"] * 100,
+        s["bb3b_c2c_aligned_0q"]["asr"] * 100,
+        s["bb3b_c2c_refined"]["asr"] * 100,
+        wb_pgd.get("asr", 0.0) * 100,
+    ]
+    colors = ["#8c8c8c", "#d95f02", "#e6ab02", "#7570b3", "#1b9e77", "#2b8cbe", "#e7298a"]
+
+    nll_labels = [
+        "BB-0\nFull ES",
+        "BB-1\nSubspace\nNES",
+        "BB-3a\nUnaligned",
+        "BB-3b\nC2C (0q)",
+        "BB-3b\nC2C Ref.",
+        "WB PGD\n(M9 Ref)",
+    ]
+    nlls = [
+        max(s["bb0_fullspace_es"]["mean_nll"], 1e-3),
+        max(s["bb1_subspace_nes"]["mean_nll"], 1e-3),
+        max(s["bb3a_unaligned_surrogate"]["mean_nll"], 1e-3),
+        max(s["bb3b_c2c_aligned_0q"]["mean_nll"], 1e-3),
+        max(s["bb3b_c2c_refined"]["mean_nll"], 1e-3),
+        max(wb_pgd.get("mean_target_nll", 0.03), 1e-3),
+    ]
+    nll_colors = ["#8c8c8c", "#d95f02", "#7570b3", "#1b9e77", "#2b8cbe", "#e7298a"]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11.5, 4.2))
+    x1 = np.arange(len(labels))
+    bars1 = ax1.bar(x1, asrs, color=colors, width=0.62)
+    for b, v in zip(bars1, asrs):
+        ax1.text(b.get_x() + b.get_width() / 2, v + 2.0, f"{v:.1f}%", ha="center", fontsize=8)
+    ax1.set_xticks(x1)
+    ax1.set_xticklabels(labels, fontsize=8)
+    ax1.set_ylim(0, 112)
+    ax1.set_ylabel("Unauthorized Tool-Call ASR (%)")
+    ax1.set_title("(a) Black-Box Threat Regimes vs. White-Box PGD")
+    ax1.grid(axis="y", alpha=0.25)
+
+    x2 = np.arange(len(nll_labels))
+    bars2 = ax2.bar(x2, nlls, color=nll_colors, width=0.58)
+    for b, v in zip(bars2, nlls):
+        ax2.text(b.get_x() + b.get_width() / 2, v * 1.15, f"{v:.2f}", ha="center", fontsize=8)
+    ax2.set_yscale("log")
+    ax2.set_xticks(x2)
+    ax2.set_xticklabels(nll_labels, fontsize=8)
+    ax2.set_ylim(1e-2, max(nlls) * 3.0)
+    ax2.set_ylabel("Mean Target Tool-Call NLL (log scale, lower = stronger)")
+    ax2.set_title("(b) Target Tool-Call Log-Likelihood Convergence")
+    ax2.grid(axis="y", alpha=0.25)
+
+    fig.tight_layout()
+    _save(fig, "fig7_blackbox")
 
 
 def main() -> None:
@@ -332,6 +427,7 @@ def main() -> None:
     fig4_mas_benchmarks()
     fig5_reach_and_stealth()
     fig6_shm_bus_latency()
+    fig7_blackbox()
 
 
 if __name__ == "__main__":

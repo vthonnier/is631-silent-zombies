@@ -1,0 +1,210 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{array}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black,
+  pdftitle={KAIST IS631 Assignment 3 Report - Virgile Thonnier (20266480)},
+  pdfauthor={Virgile Thonnier},
+}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\title{\textbf{IS631 Kernel \& System Security: Term Project Assignment 3}\\
+\large Implementation and Empirical Evaluation of Authenticated Shared-Memory Latent IPC and Edge Tensor Monitoring in Multi-Agent Systems}
+
+\author{%
+  \textbf{Virgile Thonnier} (Student ID: \texttt{20266480})\\
+  School of Computing, KAIST\\
+  \texttt{virgile.thonnier@kaist.ac.kr}
+}
+
+\date{November 27, 2026}
+
+\begin{document}
+\maketitle
+
+\section{Executive Summary and Continuity from Assignments 1 \& 2}
+Across Assignments 1 and 2, we identified a foundational systems security gap in modern Multi-Agent Systems (MAS): emerging frameworks accelerate collaboration by replacing human-readable text pipes with direct Key-Value (KV) cache and hidden-state handoffs. As a result, OS-level message filters and per-agent own-activation monitors inspect only benign surface prompts while leaving continuous inter-process KV tensors unauthenticated and unmonitored.
+
+In Assignment 3, we implemented the complete user-level Linux prototype and evaluation harness (\emph{Silent Zombies}) in Python/PyTorch, comprising: (1) a POSIX \texttt{/dev/shm} zero-copy shared-memory tensor bus (\texttt{SharedMemoryTensorBus}) protected with HMAC-SHA256 integrity tags; (2) an active edge reference monitor (\texttt{EdgeTensorReferenceMonitor}) combining cryptographic verification with cosine, norm-ratio, and spectral anomaly gating; (3) six adversarial optimization and transfer engines running at inference time without modifying victim model weights; and (4) an end-to-end validation suite spanning $3$ AgentDojo suites ($24$ pairs), $5$ Microsoft TAMAS domains ($20$ workflows), LatentMAS \texttt{GSM8K}/\texttt{ARC-Challenge} ($30$ reasoning tasks), multi-hop topology benchmarks, a black-box threat spectrum, and Linux \texttt{/dev/shm} IPC latency measurements. All $14$ unit tests pass locally, and all $10$ GPU experiment artifacts (\texttt{M3}, \texttt{M4d}, \texttt{M6}--\texttt{M12}) completed cleanly on Ubuntu 24.04.4 LTS (Linux kernel \texttt{6.6.159+}).
+
+\section{System Implementation and Architecture}
+The deliverable codebase under \texttt{latent\_mas\_attack/lmas/} implements four coupled subsystems:
+
+\subsection{POSIX \texttt{/dev/shm} Shared-Memory Tensor Bus (\texttt{lmas/ipc/})}
+To replace ad-hoc in-memory tensor passing or slow pickle serialization across agent processes, \texttt{SharedMemoryTensorBus} allocates named segments under Linux \texttt{/dev/shm}. Each edge transfer packs a structured binary header (sequence length, layer count, KV head metadata, dtype tag, sequence nonce) concatenated with raw contiguous layer buffers and an HMAC-SHA256 authentication tag computed over the header and tensor payload. If a bit flip, truncation, or spoofing attempt modifies either metadata or tensor bytes in transit, signature verification raises an integrity fault prior to downstream deserialization.
+
+\subsection{Active Edge Tensor Reference Monitor (\texttt{lmas/detectors/edge\_monitor.py})}
+Unlike text monitors (blind to continuous tensors) and own-activation probes such as AcMAS (which inspect a generating agent's final hidden state after perturbation, missing non-generating ``silent'' nodes), \texttt{EdgeTensorReferenceMonitor} interposes directly on the transmitted KV handoff edge. For each incoming handoff, it enforces: (i) valid HMAC-SHA256 authentication; (ii) per-layer L2 norm ratio bounds against clean reference statistics ($\tau_{\text{norm}}=1.08$); (iii) cosine distance against calibrated benign edge centroids ($\tau_{\cos}=0.01$); and (iv) spectral energy outlier checks ($\tau_{\text{spec}}=0.05$). When a handoff is flagged or fails authentication, the runtime drops the poisoned KV prefix and falls back safely to clean unperturbed inference.
+
+\subsection{Inference-Time, Victim-Unmodified Attack Modules (\texttt{lmas/attacks/})}
+Every attack leaves all victim transformer parameters $\theta$, system prompts, and tool definitions completely unmodified at inference time:
+\begin{itemize}
+  \item \textbf{Full-Space KV PGD (\texttt{pgd.py}):} Optimizes layer-subset KV perturbations $\Delta$ via Adam ($\text{lr}=0.02$) projected onto an L2 norm ball ($\rho \in \{4, 8, 16\}$) against target tool-call log-likelihood.
+  \item \textbf{White-Box Discrete GCG \& 1D Steering (\texttt{gcg\_text.py}, \texttt{outofsight}):} Baselines optimizing discrete token suffixes or rank-1 steering directions over identical budgets.
+  \item \textbf{Universal Zero-Shot KV Patches (\texttt{universal\_patch.py}):} Amortizes $1$-slot Broadcast Deltas or $16$-slot KV Prefix Patches over $3$ training tasks for zero-step transfer across unseen prompts, topologies, and tool schemas.
+  \item \textbf{Dual-Evasion Adaptive PGD (\texttt{stealth.py}):} Simultaneously minimizes target loss alongside AcMAS ($\lambda_{\text{acmas}}$) and statistical edge-centroid ($\lambda_{\text{edge}}$) penalties to stress-test statistical vs.\ cryptographic defenses.
+  \item \textbf{Black-Box \& C2C Bridge Suite (\texttt{blackbox\_subspace.py}, \texttt{c2c\_bridge.py}):} Implements logprob ES, SVD subspace NES, decision-only string search, and \texttt{1.5B}$\to$\texttt{3B} ridge-aligned Cache-to-Cache surrogate bridges.
+\end{itemize}
+
+\subsection{Multi-Benchmark Wrappers and Test Suite}
+Benchmark harnesses (\texttt{agentdojo\_env.py}, \texttt{tamas\_env.py}, \texttt{latentmas\_reasoning.py}) standardize clean vs.\ attacked execution, automated security checks, benign utility scoring, and token accounting. Five unit-test modules in \texttt{tests/} ($14$ tests total) verify \texttt{/dev/shm} HMAC integrity, edge monitor calibration and fallback gating, subspace NES scaling, C2C bridge projection math, and metric parsing without requiring a GPU.
+
+\section{Explicit Implementation and Evaluation Environment}
+Per IS631 Assignment 3 guidelines, the exact primary hardware, kernel, and software runtime recorded verbatim in \texttt{paper/results/env\_info.json} is summarized in Table~\ref{tab:env}. Early single-GPU topology/stealth baselines (\texttt{M4}, \texttt{M4b}, \texttt{M4c}, \texttt{M5}) were executed locally on Windows 11 with an NVIDIA RTX 2080 SUPER ($8$~GB VRAM, \texttt{bfloat16} compute). Because the Tesla T4 (\texttt{sm\_75}) lacks hardware Tensor Core \texttt{bfloat16} instructions (triggering slow software emulation), all primary T4 runs automatically select hardware \texttt{float16} compute over 4-bit NF4 double-quantized \texttt{Qwen2.5-3B-Instruct} weights ($L=36$ layers, $2$ GQA KV heads of dim $128$).
+
+\begin{table}[h]
+\centering
+\caption{Exact Primary Linux Evaluation Environment (\texttt{paper/results/env\_info.json}).}
+\label{tab:env}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{ll}
+\toprule
+Component & Verified Specification \\
+\midrule
+Deployment Model & User-level Python/PyTorch application with POSIX \texttt{/dev/shm} tmpfs IPC \\
+Operating System & Ubuntu 24.04.4 LTS (Noble Numbat) \\
+Linux Kernel (\texttt{uname -r}) & \texttt{6.6.159+} (\texttt{\#1 SMP Thu Oct 22 03:07:54 UTC 2026 x86\_64}) \\
+GPU & NVIDIA Tesla T4 ($14.56$~GB VRAM, compute capability \texttt{sm\_75}) \\
+Host Memory & $50$~GiB system RAM \\
+Software Stack & Python \texttt{3.13.16}, PyTorch \texttt{2.14.1+cu130}, CUDA \texttt{13.0} \\
+ML \& Benchmark Packages & \texttt{transformers 4.53.3}, \texttt{bitsandbytes 0.50.2}, \texttt{agentdojo 0.1.35} \\
+Victim Model & \texttt{Qwen/Qwen2.5-3B-Instruct} (4-bit NF4, \texttt{float16} compute, SDPA) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\section{Evaluation Plan and Benchmark Characteristics}
+Our evaluation validates both offensive attack efficacy and OS/edge defensive effectiveness across five complementary workloads:
+\begin{enumerate}
+  \item \textbf{AgentDojo Multi-Suite (\texttt{M3}, \texttt{M6}, \texttt{M7}, \texttt{M9}):} $24$ user/injection pairs ($8$ each across \texttt{workspace}, \texttt{banking}, \texttt{slack}) measuring programmatic post-execution unauthorized tool ASR and benign task utility against clean runs, inter-agent text injections, indirect tool injections, white-box discrete GCG, 1D Out-of-Sight steering, and $3$-agent text conversation boundaries.
+  \item \textbf{Microsoft TAMAS 4-Agent MAS (\texttt{M11}):} $20$ workflows across $5$ high-stakes domains (\texttt{finance}, \texttt{healthcare}, \texttt{legal}, \texttt{education}, \texttt{news}; $4$ scenarios per domain), comparing clean execution, TAMAS text DPI, Silent Zombie latent PGD, and active edge gating.
+  \item \textbf{LatentMAS Reasoning (\texttt{M11}):} $15$ \texttt{GSM8K} math word problems and $15$ \texttt{ARC-Challenge} science questions executed by a $4$-agent latent reasoning team, quantifying token savings, clean accuracy, exact-target answer hijack ASR, and edge-monitor recovery.
+  \item \textbf{Topology Reach, Zero-Shot Transfer, and Black-Box Boundary (\texttt{M4}--\texttt{M4d}, \texttt{M10}, \texttt{M12}):} Multi-hop chains (text-mediated depth $5$ vs.\ pure-latent differentiable depths $2$--$6$), $16$-task / $6$-topology / $6$-schema zero-shot transfer, and $6$ black-box attack regimes (\texttt{BB-0} through \texttt{BB-3b}).
+  \item \textbf{Linux \texttt{/dev/shm} IPC Microbenchmark (\texttt{M8}):} Synthetic $36$-layer \texttt{bf16} KV caches across sequence lengths $\{64, 256, 512, 1024\}$ ($2.25\text{--}36.00$~MB, $25$ trials per length) comparing authenticated POSIX \texttt{/dev/shm} against unauthenticated \texttt{torch.save} serialization plus $10$ integrity tamper injection tests.
+\end{enumerate}
+
+\section{Empirical Results and Analysis}
+All results below match the verified JSON files under \texttt{paper/results/} verbatim. Note carefully that in \texttt{M10}, cross-precision evaluation (\texttt{cross\_precision\_bf16}) was skipped in the final Colab sweep to prioritize finishing \texttt{M12}; only the three completed transfer axes are reported, and cross-precision transfer is documented as future work.
+
+\subsection{Latent Action Forcing, White-Box Expressivity, and Text Firewalls (\texttt{M3}, \texttt{M6}, \texttt{M7}, \texttt{M9})}
+In \texttt{M3} (Figure~\ref{fig:m3_report}), all four layer/norm configs (\texttt{late4\_n8}, \texttt{spread4\_n8}, \texttt{spread4\_n16}, \texttt{deep6\_n16}) reduce target \texttt{send\_email} NLL from $\sim 118.4$ below $0.01$ within $\sim 40$ steps ($0.005$--$0.009$ at step $120$) and trigger \texttt{security=true}. Scaled to $24$ pairs across $3$ AgentDojo suites (Table~\ref{tab:summary_metrics}), latent PGD achieves $75.0\%$ ASR vs.\ $4.2\%$ for inter-agent and indirect tool text baselines ($100.0\%$ and $83.3\%$ text-monitor catch), while completely evading text and AcMAS detectors ($0.0\%$ catch). Edge gating achieves $50.0\%$ TPR on \texttt{workspace} ($75.0\% \to 25.0\%$ ASR at $0.0\%$ FPR; $16.7\%$ overall TPR).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.68\linewidth]{../paper/figures/fig2_m3_nll_convergence.pdf}
+\caption{M3 optimization trajectories across all four PGD layer placements and norm budgets.}
+\label{fig:m3_report}
+\end{figure}
+
+In the controlled \texttt{M9} white-box matrix (Figure~\ref{fig:m9_report}, $n=8$), full-space KV PGD reaches $62.5\%$ ASR (NLL $0.029$, $64.74$~s), outperforming discrete text WB-GCG ($37.5\%$ ASR, $116.39$~s, $75.0\%$ caught by text/PPL checks), latent WB-GCG ($0.0\%$), and 1D Out-of-Sight steering ($0.0\%$ ASR, NLL $699.344$, $100.0\%$ flagged). Crucially, Part B reveals that inserting even a single text conversation boundary in a $3$-agent pipeline drops ASR from $62.5\%$ to $0.0\%$ across all four variants while enabling $25.0\%$--$75.0\%$ text monitor detection.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../paper/figures/fig1_whitebox_matrix_convpoint.pdf}
+\caption{M9 white-box expressivity comparison (a) and causal mitigation via text conversation points (b).}
+\label{fig:m9_report}
+\end{figure}
+
+\subsection{Pure-Latent Unbounded Reach and Zero-Shot Prefix Patch Transfer (\texttt{M4d}, \texttt{M10})}
+While intermediate text decoding caps text-mediated chain reach at $33.3\%$ beyond hop~$2$, removing intermediate decodes in a pure-latent differentiable chain (\texttt{M4d}, Figure~\ref{fig:m5_report}(a)) achieves $100.0\%$ target control across all tested depths $2, 3, 4, 5, 6$ ($n=3$, $\rho=8$) with non-vanishing initial gradient norms ($2.45\text{--}3.23$). Furthermore, \texttt{M10} (Figure~\ref{fig:m10_report}) demonstrates that a $16$-slot Universal KV Prefix Patch trained on $3$ tasks transfers zero-shot ($0$ test-time gradient steps) at $81.2\%$ ASR on $16$ unseen tasks ($56.2\%$ for $1$-slot broadcast), $50.0\%$ on $3$-worker Star and $3$-hop pure-latent topologies ($n=6$), $33.3\%$ on a single-patch DAG, and $50.0\%$ under paraphrased prompts and reversed tool schemas.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.84\linewidth]{../paper/figures/fig3_transferability.pdf}
+\caption{M10 zero-shot transferability with zero test-time optimization steps across tasks, topologies, and schemas.}
+\label{fig:m10_report}
+\end{figure}
+
+\subsection{TAMAS, LatentMAS, Adaptive Stealth, and Linux \texttt{/dev/shm} IPC Performance (\texttt{M8}, \texttt{M11})}
+Table~\ref{tab:summary_metrics} and Figure~\ref{fig:m11_report} show \texttt{M11} outcomes on Microsoft TAMAS and LatentMAS. On TAMAS ($20$ workflows), Silent Zombie PGD hits $100.0\%$ ASR across all $5$ domains with $0.0\%$ text catch and $45.0\%$ AcMAS catch ($0.0\%$ on \texttt{education}/\texttt{news}), whereas \texttt{EdgeTensorReferenceMonitor} catches $100.0\%$ of attacks and restores exact clean baseline security ($20.0\%$ ASR) and utility ($65.0\%$). On LatentMAS, KV handoffs cut tokens by $94.7\%$ (\texttt{GSM8K}: $339.8 \to 18.1$ tok/q) and $98.5\%$ (\texttt{ARC-Challenge}: $205.7 \to 3.0$ tok/q); full-space PGD hijacks $53.3\%$ (\texttt{GSM8K}) and $100.0\%$ (\texttt{ARC}) of answers vs.\ $0.0\%$ for 1D Out-of-Sight, while Edge gating achieves $100.0\%$ TPR and restores clean latent accuracy ($13.3\%$ and $60.0\%$).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../paper/figures/fig4_mas_benchmarks.pdf}
+\caption{M11 Microsoft TAMAS 5-domain protection (a) and M6/M7 AgentDojo 24-pair comparison (b).}
+\label{fig:m11_report}
+\end{figure}
+
+In \texttt{M8} dual-evasion (Figure~\ref{fig:m5_report}(b)), setting $\lambda_{\text{acmas}}=20$ alone leaves $66.7\%$ caught by Edge Monitor; adding $\lambda_{\text{edge}}=2500$ compresses edge cosine distance $10.8\times$ ($0.01112 \to 0.00103$, norm ratio $1.0514 \to 1.0094$), bypassing unauthenticated statistical thresholds ($0.0\%$ flag rate at $100.0\%$ ASR). On Linux kernel \texttt{6.6.159+} \texttt{/dev/shm} (Figure~\ref{fig:m8_report}), HMAC-SHA256 authentication rejects $10/10$ tampered segments ($100.0\%$). Crucially, software HMAC-SHA256 throughput ($0.134\text{--}0.152$~GB/s) dominates copy latency ($16.41\text{--}236.07$~ms vs.\ $11.20\text{--}64.41$~ms for unauthenticated serialization across $2.25\text{--}36.00$~MB payloads), pointing directly to hardware-accelerated AEAD/CXL NIC offload as a kernel systems optimization.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../paper/figures/fig5_reach_and_stealth.pdf}
+\caption{Multi-hop reach (a) and adaptive dual-evasion Pareto behavior (b).}
+\label{fig:m5_report}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.72\linewidth]{../paper/figures/fig6_shm_bus_latency.pdf}
+\caption{M8 Linux \texttt{/dev/shm} zero-copy + HMAC-SHA256 IPC latency vs.\ unauthenticated serialized baseline.}
+\label{fig:m8_report}
+\end{figure}
+
+\subsection{Black-Box Threat Boundary (\texttt{M12})}
+Every black-box regime in \texttt{M12} (\texttt{BB-0} full ES $60$q, \texttt{BB-1} SVD NES $241$q, \texttt{BB-2} decision-only $25$q, \texttt{BB-3a} unaligned \texttt{1.5B}$\to$\texttt{3B}, and \texttt{BB-3b} C2C ridge bridges) scores $0.0\%$ unauthorized tool-call ASR across $6$ pairs (mean NLL $91.84\text{--}147.16$; \texttt{BB-1}/\texttt{BB-2} $100.0\%$ caught by Edge Monitor), vs.\ $62.5\%$ ASR (NLL $0.029$) for white-box PGD (Figure~\ref{fig:m12_report}). Protecting weights and KV internal layouts thus establishes a strong perimeter against external query-only attackers.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{../paper/figures/fig7_blackbox.pdf}
+\caption{M12 black-box regimes vs.\ white-box PGD: ASR (a) and mean target tool-call NLL (b).}
+\label{fig:m12_report}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Consolidated Verified Headline Results Across Benchmarks (\texttt{paper/results/*.json}).}
+\label{tab:summary_metrics}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{llccc}
+\toprule
+Experiment & Condition & Primary Metric (ASR / Acc) & Text Catch & AcMAS / Edge Catch \\
+\midrule
+\texttt{M6}/\texttt{M7} AgentDojo ($n=24$) & Clean / Text / Latent PGD & $0.0\%$ / $4.2\%$ / $\mathbf{75.0\%}$ & --- / $100\%$ / $0\%$ & $0\%$ / $16.7\%$ ($50\%$ ws) \\
+\texttt{M9} Matrix ($n=8$) & WB-GCG (Text) / Full PGD (Latent) & $37.5\%$ / $\mathbf{62.5\%}$ & $75.0\%$ / $0.0\%$ & $0\%$ / $50.0\%$ \\
+\texttt{M9} Conv.\ Pts ($n=8$) & $0$ Text Pts / $\ge 1$ Text Pt & $62.5\%$ / $\mathbf{0.0\%}$ & $0.0\%$ / $25$--$75\%$ & --- \\
+\texttt{M10} Transfer & Unseen Task ($n=16$, 16-slot Patch) & $\mathbf{81.2\%}$ zero-shot & --- & --- \\
+\texttt{M11} TAMAS ($n=20$) & Clean / Text DPI / Latent / Edge Def. & $20\%$ / $95\%$ / $100\%$ / $\mathbf{20\%}$ & --- / $100\%$ / $0\%$ / --- & $45\%$ / $\mathbf{100.0\%}$ \\
+\texttt{M11} LatentMAS \texttt{GSM8K} & Full PGD Hijack / Edge Defended & $53.3\%$ / $\mathbf{0.0\%}$ ($13.3\%$ acc) & --- & --- / $\mathbf{100.0\%}$ \\
+\texttt{M11} LatentMAS \texttt{ARC} & Full PGD Hijack / Edge Defended & $100.0\%$ / $\mathbf{20.0\%}$ ($60.0\%$ acc) & --- & --- / $\mathbf{100.0\%}$ \\
+\texttt{M12} Black-Box ($n=6$) & \texttt{BB-0}..\texttt{BB-3b} vs.\ \texttt{M9} WB PGD & $\mathbf{0.0\%}$ vs.\ $62.5\%$ & --- & \texttt{BB-1/2}: $100.0\%$ Edge \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\section{Reproducibility and Artifact Guide}
+All code, tests, raw JSON metrics, PDFs, and Colab drivers are archived inside \texttt{artifact/} of the submission archive and hosted publicly on GitHub and Hugging Face:
+\begin{itemize}
+  \item \textbf{GitHub Repository:} \url{https://github.com/vthonnier/is631-silent-zombies}
+  \item \textbf{Hugging Face Dataset:} \url{https://huggingface.co/datasets/vthonnier/is631-silent-zombies-artifacts}
+  \item \textbf{Unit Tests (CPU):} \texttt{python -m pytest -v} ($14/14$ tests pass locally).
+  \item \textbf{Figure Regeneration:} \texttt{python scripts/generate\_figures.py} produces \texttt{fig1}--\texttt{fig7} from \texttt{paper/results/*.json}.
+  \item \textbf{GPU Sweep:} Execute the notebook \texttt{notebooks/IS631\_Assignment3\_Colab.ipynb}, or invoke the resumable CLI runner \texttt{python scripts/run\_colab\_suite.py}.
+\end{itemize}
+
+\section{Generative AI Usage Disclosure}
+In accordance with KAIST IS631 submission policy, generative AI tools were used as engineering and editorial assistants during this project:
+\begin{itemize}
+  \item \textbf{Tools and Models:} Antigravity agentic IDE powered by Google DeepMind Gemini models, connected to Google Colab Pro via the hosted Colab API MCP server for headless experiment execution.
+  \item \textbf{Usage Scope and Prompts:} AI assistance was used for (a) boilerplate structuring of PyTorch attack/monitor modules and POSIX \texttt{/dev/shm} unit tests, (b) diagnosing Colab GPU/precision issues (identifying \texttt{sm\_75} \texttt{bfloat16} emulation slowdown and GCG/NES scaling bugs), (c) generating \texttt{matplotlib} figure scripts, and (d) drafting and formatting LaTeX tables and prose for the paper and report.
+  \item \textbf{Human Author Verification:} The author independently verified every scientific claim, inspected all raw JSON artifacts in \texttt{paper/results/} verbatim, ran and checked all $14$ unit tests, visually audited all generated figures and compiled PDF pages, removed unexecuted claims (e.g., deferring \texttt{cross\_precision\_bf16} rather than extrapolating), and corrected IPC benchmark annotations where software HMAC-SHA256 throughput lagged unauthenticated serialization.
+\end{itemize}
+
+\end{document}
